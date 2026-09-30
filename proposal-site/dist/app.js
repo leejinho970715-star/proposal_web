@@ -10,7 +10,7 @@ function renderCards(){
     const button=document.createElement('button');button.className='card-open';button.setAttribute('aria-label',`${proposal.name}, ${proposal.pages.length}페이지 열기`);
     const cover=document.createElement('img');cover.className='cover';cover.src=proposal.pages[0].src;cover.alt=`${proposal.name} 표지`;cover.loading='lazy';
     const info=document.createElement('div');info.className='card-info';
-    const meta=document.createElement('div');meta.className='card-meta';meta.textContent=proposal.builtIn?'I-ONE SOFTBANK':'MY PROPOSAL';
+    const meta=document.createElement('div');meta.className='card-meta';meta.textContent=proposal.builtIn?'I-ONE SOFT BANK PMS 제안서(건설)_기성관리':'MY PROPOSAL';
     const title=document.createElement('h3');title.className='card-title';title.textContent=proposal.name;
     const bottom=document.createElement('div');bottom.className='card-bottom';
     const count=document.createElement('span');count.textContent=`${proposal.pages.length} 페이지`;
