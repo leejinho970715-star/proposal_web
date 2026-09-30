@@ -1,0 +1,5 @@
+proposal-site/.openai/
+proposal-site/.sites-runtime/
+node_modules/
+*.log
+.DS_Store
