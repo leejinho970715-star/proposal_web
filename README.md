@@ -35,3 +35,9 @@ node proposal-site/server.cjs
 저장소의 Settings → Pages → Source를 **GitHub Actions**로 설정합니다. `main`에 푸시하면 자동 배포됩니다.
 
 사이트 주소: https://leejinho970715-star.github.io/proposal_web/
+
+## Vercel 배포
+
+GitHub 저장소를 연결하고 Root Directory는 저장소 루트로 유지하세요. 루트의 `vercel.json`이 정적 사이트 폴더인 `proposal-site/dist`를 Output Directory로 지정합니다. 패키지 설치나 빌드 명령은 필요하지 않습니다. `main`에 푸시하면 연결된 Vercel 프로젝트가 자동 재배포됩니다.
+
+Vercel 사이트 주소: https://proposalweb-plum.vercel.app/
