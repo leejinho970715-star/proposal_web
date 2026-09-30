@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
+const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
 let active=null, page=0, db=null, returnFocus=null;
 const urls=[];
 function notify(message){$('notice').textContent=message;$('notice').hidden=false;setTimeout(()=>$('notice').hidden=true,5000);}
@@ -14,8 +14,12 @@ function renderCards(){
     const title=document.createElement('h3');title.className='card-title';title.textContent=proposal.name;
     const bottom=document.createElement('div');bottom.className='card-bottom';
     const count=document.createElement('span');count.textContent=`${proposal.pages.length} 페이지`;
-    const open=document.createElement('strong');open.textContent='제안서 보기';bottom.append(count,open);info.append(meta,title,bottom);button.append(cover,info);
-    button.addEventListener('click',()=>{returnFocus=button;openProposal(proposal.id);});card.append(button);$('cards').append(card);
+    const actions=document.createElement('div');actions.className='card-actions';
+    const open=document.createElement('button');open.type='button';open.className='slide-action';open.textContent='슬라이드 보가';open.setAttribute('aria-label',`${proposal.name} 슬라이드 보가`);
+    open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
+    if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
+    bottom.append(count);info.append(meta,title,bottom,actions);button.append(cover);
+    button.addEventListener('click',()=>{returnFocus=button;openProposal(proposal.id);});card.append(button,info);$('cards').append(card);
   });
 }
 function updatePage(){
@@ -83,15 +87,16 @@ dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
 dialog.addEventListener('close',()=>{pendingImages.forEach(item=>URL.revokeObjectURL(item.url));pendingImages=[];$('add-form').reset();renderImageOrder();});
 function openDatabase(){return new Promise((resolve,reject)=>{const request=indexedDB.open('ione-proposal-library',1);request.onupgradeneeded=()=>request.result.createObjectStore('proposals',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
 function storeRecord(record){return new Promise((resolve,reject)=>{const tx=db.transaction('proposals','readwrite');tx.objectStore('proposals').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
-function hydrate(record){return {...record,pages:record.pages.map(p=>{const src=URL.createObjectURL(p.blob);urls.push(src);return {name:p.name,src};})};}
+function hydrate(record){let pdfUrl=null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{const src=URL.createObjectURL(p.blob);urls.push(src);return {name:p.name,src};})};}
+async function validatePdf(file){if(!file)return;const header=new TextDecoder().decode(await file.slice(0,5).arrayBuffer());if(!/\.pdf$/i.test(file.name)||header!=='%PDF-')throw new Error('올바른 PDF 파일을 선택하세요.');}
 async function validateImages(files){for(const file of files){const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();}catch{throw new Error(`이미지를 읽을 수 없습니다: ${file.name}`);}finally{URL.revokeObjectURL(url);}}}
 $('add-form').onsubmit=async event=>{
-  event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();
+  event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();const pdfFile=$('pdf-file').files[0];
   if(saving)return;
   if(!files.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
   if(!db){$('form-error').textContent='이 브라우저에서 저장소를 사용할 수 없습니다. 일반 브라우저 창에서 다시 시도하세요.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
-  try{await validateImages(files);const record={id:crypto.randomUUID(),name,pages:files.map(f=>({name:f.name,blob:f}))};await storeRecord(record);proposals.push(hydrate(record));renderCards();dialog.close();$('add-form').reset();$('file-note').textContent='PNG, JPG, WEBP, GIF, AVIF 이미지 지원';notify('제안서가 이 브라우저에 저장되었습니다.');}
+  try{await validatePdf(pdfFile);await validateImages(files);const record={id:crypto.randomUUID(),name,pages:files.map(f=>({name:f.name,blob:f})),pdf:pdfFile?{name:pdfFile.name,blob:new Blob([pdfFile],{type:'application/pdf'})}:null};await storeRecord(record);proposals.push(hydrate(record));renderCards();dialog.close();$('add-form').reset();$('file-note').textContent='PNG, JPG, WEBP, GIF, AVIF 이미지 지원';notify('제안서가 이 브라우저에 저장되었습니다.');}
   catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';}
   finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent='라이브러리에 추가';}
 };

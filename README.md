@@ -41,3 +41,7 @@ node proposal-site/server.cjs
 GitHub 저장소를 연결하고 Root Directory는 저장소 루트로 유지하세요. 루트의 `vercel.json`이 정적 사이트 폴더인 `proposal-site/dist`를 Output Directory로 지정합니다. 패키지 설치나 빌드 명령은 필요하지 않습니다. `main`에 푸시하면 연결된 Vercel 프로젝트가 자동 재배포됩니다.
 
 Vercel 사이트 주소: https://proposalweb-plum.vercel.app/
+
+## PDF 보기
+
+기본 PMS 제안서 카드의 PDF 보기에서 첨부 원본 PDF를 새 탭으로 엽니다. 제안서 추가 시 슬라이드 이미지와 PDF 한 개를 함께 선택할 수 있습니다. PDF 첨부는 선택 사항이며, 첨부한 제안서에만 PDF 보기 버튼이 표시됩니다. 추가 PDF도 이미지와 함께 현재 브라우저에 저장되어 새로고침 후 유지됩니다.
