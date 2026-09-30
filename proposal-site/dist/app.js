@@ -52,20 +52,48 @@ document.addEventListener('keydown',event=>{
 let resizeTimer;window.addEventListener('resize',()=>{if(!active)return;const selected=page;clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{$('track').scrollTo({left:selected*$('track').clientWidth,behavior:'instant'});},80);});
 const dialog=$('add-dialog');$('add').onclick=()=>{$('form-error').textContent='';dialog.showModal();};$('cancel').onclick=()=>dialog.close();
 const supported=/\.(png|jpe?g|webp|gif|avif)$/i;
-function selectedFiles(){return Array.from($('files').files).filter(f=>supported.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true})||(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,'ko',{numeric:true}));}
-$('files').onchange=()=>{const files=selectedFiles();$('file-note').textContent=files.length?`${files.length}페이지 · ${files[0].name}부터 시작`:'지원하는 이미지가 없는 폴더입니다.';if(!$('proposal-name').value&&files[0])$('proposal-name').value=(files[0].webkitRelativePath.split('/')[0]||'새 제안서').slice(0,100);};
+let pendingImages=[], saving=false;
+function selectedFiles(){return pendingImages.map(item=>item.file);}
+function renderImageOrder(){
+  $('image-order').replaceChildren();
+  $('file-note').textContent=pendingImages.length?`${pendingImages.length}페이지 · 첫 이미지가 라이브러리 썸네일로 사용됩니다.`:'PNG, JPG, WEBP, GIF, AVIF 이미지 지원';
+  pendingImages.forEach((item,index)=>{
+    const row=document.createElement('li');
+    const preview=document.createElement('img');preview.src=item.url;preview.alt=`${index+1}페이지 미리보기`;
+    const label=document.createElement('span');label.textContent=`${index+1}${index===0?' · 표지':''} — ${item.file.name}`;
+    const actions=document.createElement('div');actions.className='image-actions';
+    for(const [text,offset] of [['앞으로',-1],['뒤로',1]]){
+      const button=document.createElement('button');button.type='button';button.textContent=text;button.setAttribute('aria-label',`${index+1}페이지 ${text}`);
+      button.disabled=index+offset<0||index+offset>=pendingImages.length;
+      button.onclick=()=>{if(saving)return;const next=index+offset;[pendingImages[index],pendingImages[next]]=[pendingImages[next],pendingImages[index]];renderImageOrder();$('image-order').children[next].querySelector('button:not(:disabled)')?.focus();};actions.append(button);
+    }
+    const remove=document.createElement('button');remove.type='button';remove.textContent='제외';remove.setAttribute('aria-label',`${index+1}페이지 제외`);
+    remove.onclick=()=>{if(saving)return;URL.revokeObjectURL(item.url);pendingImages.splice(index,1);renderImageOrder();};actions.append(remove);
+    row.append(preview,label,actions);$('image-order').append(row);
+  });
+}
+$('files').onchange=()=>{
+  const chosen=Array.from($('files').files);const files=chosen.filter(f=>supported.test(f.name));
+  pendingImages.push(...files.map(file=>({file,url:URL.createObjectURL(file)})));
+  $('files').value='';renderImageOrder();
+  $('form-error').textContent=chosen.length!==files.length?'지원하지 않는 파일은 제외되었습니다. PNG, JPG, WEBP, GIF, AVIF 이미지를 선택하세요.':'';
+  if(!$('proposal-name').value&&files[0])$('proposal-name').value=files[0].name.replace(/\.[^.]+$/,'').slice(0,100);
+};
+dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
+dialog.addEventListener('close',()=>{pendingImages.forEach(item=>URL.revokeObjectURL(item.url));pendingImages=[];$('add-form').reset();renderImageOrder();});
 function openDatabase(){return new Promise((resolve,reject)=>{const request=indexedDB.open('ione-proposal-library',1);request.onupgradeneeded=()=>request.result.createObjectStore('proposals',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
 function storeRecord(record){return new Promise((resolve,reject)=>{const tx=db.transaction('proposals','readwrite');tx.objectStore('proposals').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 function hydrate(record){return {...record,pages:record.pages.map(p=>{const src=URL.createObjectURL(p.blob);urls.push(src);return {name:p.name,src};})};}
 async function validateImages(files){for(const file of files){const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();}catch{throw new Error(`이미지를 읽을 수 없습니다: ${file.name}`);}finally{URL.revokeObjectURL(url);}}}
 $('add-form').onsubmit=async event=>{
   event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();
-  if(!files.length||!name){$('form-error').textContent='제안서 이름과 이미지 폴더를 확인하세요.';return;}
+  if(saving)return;
+  if(!files.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
   if(!db){$('form-error').textContent='이 브라우저에서 저장소를 사용할 수 없습니다. 일반 브라우저 창에서 다시 시도하세요.';return;}
-  $('save').disabled=true;$('save').textContent='이미지 확인 및 저장 중…';
+  saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
   try{await validateImages(files);const record={id:crypto.randomUUID(),name,pages:files.map(f=>({name:f.name,blob:f}))};await storeRecord(record);proposals.push(hydrate(record));renderCards();dialog.close();$('add-form').reset();$('file-note').textContent='PNG, JPG, WEBP, GIF, AVIF 이미지 지원';notify('제안서가 이 브라우저에 저장되었습니다.');}
   catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';}
-  finally{$('save').disabled=false;$('save').textContent='라이브러리에 추가';}
+  finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent='라이브러리에 추가';}
 };
 renderCards();
 (async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{proposals.push(...request.result.map(hydrate));renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();

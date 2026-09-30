@@ -34,7 +34,7 @@
       <div class="section-heading"><h2>전체 제안서 <span id="count">1</span></h2><span>이미지 슬라이드</span></div>
       <div id="cards" class="cards"></div>
       <p class="storage-note">추가한 제안서는 이 브라우저에 저장됩니다. 다른 기기에는 표시되지 않으며, 브라우저 데이터를 지우면 삭제됩니다.</p>
-    </main><footer class="library-footer">(c) 2026.09.30 Design By Eungyu Lee</footer>
+    </main><footer class="library-footer">(c) 2026.09.30 Designed By Eungyu Lee | IONESOFTBANK</footer>
   </section>
   <section id="viewer" class="viewer" hidden aria-label="제안서 슬라이드쇼">
     <header class="viewer-header"><button id="back" class="subtle">☷ 제안서 목록</button><h1 id="viewer-title"></h1><span id="top-count"></span></header>
@@ -44,6 +44,6 @@
     </main>
     <footer class="viewer-footer"><span class="hint">스크롤 또는 ← → 키로 페이지 이동</span><div class="page-counter" aria-live="polite"><strong id="current">01</strong><span>/</span><span id="total">25</span></div><span class="hint touch-hint">좌우로 밀어서 넘기기</span><div class="progress"><div id="progress-fill"></div></div></footer>
   </section>
-  <dialog id="add-dialog"><form id="add-form"><div class="dialog-heading"><h2>제안서 추가</h2><button type="button" id="cancel" class="close" aria-label="닫기">×</button></div><p class="muted">페이지 이미지가 들어 있는 폴더를 선택하세요.<br>파일명의 숫자 순서대로 페이지가 정렬됩니다.</p><label for="proposal-name">제안서 이름</label><input id="proposal-name" placeholder="예: ERP 구축 제안서" required maxlength="100"><label for="files">이미지 폴더</label><input id="files" type="file" webkitdirectory multiple accept="image/*" required><p id="file-note" class="muted small">PNG, JPG, WEBP, GIF, AVIF 이미지 지원</p><p id="form-error" class="error" role="alert"></p><button id="save" class="primary" type="submit">라이브러리에 추가</button></form></dialog>
+  <dialog id="add-dialog"><form id="add-form"><div class="dialog-heading"><h2>제안서 추가</h2><button type="button" id="cancel" class="close" aria-label="닫기">×</button></div><p class="muted">여러 이미지를 한 번에 선택하세요.<br>아래 목록의 순서대로 슬라이드가 생성되며, 첫 이미지가 표지가 됩니다.</p><label for="proposal-name">제안서 이름</label><input id="proposal-name" placeholder="예: ERP 구축 제안서" required maxlength="100"><label for="files">이미지 추가 (여러 개 선택 가능)</label><input id="files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.avif"><p id="file-note" class="muted small">PNG, JPG, WEBP, GIF, AVIF 이미지 지원</p><ol id="image-order" class="image-order" aria-label="슬라이드 페이지 순서"></ol><p id="form-error" class="error" role="alert"></p><button id="save" class="primary" type="submit">라이브러리에 추가</button></form></dialog>
   <div id="notice" class="notice" role="status" hidden></div>
 </body></html>
