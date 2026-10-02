@@ -10,7 +10,7 @@ function renderCards(){
     const button=document.createElement('button');button.className='card-open';button.setAttribute('aria-label',`${proposal.name}, ${proposal.pages.length}페이지 열기`);
     const cover=document.createElement('img');cover.className='cover';cover.src=proposal.pages[0].src;cover.alt=`${proposal.name} 표지`;cover.loading='lazy';
     const info=document.createElement('div');info.className='card-info';
-    const meta=document.createElement('div');meta.className='card-meta';meta.textContent=proposal.builtIn?'I-ONE SOFT BANK PMS 제안서(건설)_기성관리':'MY PROPOSAL';
+    const meta=document.createElement('div');meta.className='card-meta';meta.textContent=getSubtitle(proposal);meta.hidden=!meta.textContent;
     const title=document.createElement('h3');title.className='card-title';title.textContent=proposal.name;
     const bottom=document.createElement('div');bottom.className='card-bottom';
     const count=document.createElement('span');count.textContent=`${proposal.pages.length} 페이지`;
@@ -18,6 +18,7 @@ function renderCards(){
     const open=document.createElement('button');open.type='button';open.className='slide-action';open.textContent='슬라이드 보가';open.setAttribute('aria-label',`${proposal.name} 슬라이드 보가`);
     open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
     if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
+    const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
     bottom.append(count);info.append(meta,title,bottom,actions);button.append(cover);
     button.addEventListener('click',()=>{returnFocus=button;openProposal(proposal.id);});card.append(button,info);$('cards').append(card);
   });
@@ -54,17 +55,33 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Home'){event.preventDefault();goTo(0);}if(event.key==='End'){event.preventDefault();goTo(active.pages.length-1);}if(event.key==='Escape')$('back').click();
 });
 let resizeTimer;window.addEventListener('resize',()=>{if(!active)return;const selected=page;clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{$('track').scrollTo({left:selected*$('track').clientWidth,behavior:'instant'});},80);});
-const dialog=$('add-dialog');$('add').onclick=()=>{$('form-error').textContent='';dialog.showModal();};$('cancel').onclick=()=>dialog.close();
+function getSubtitle(proposal){return proposal.subtitle??(proposal.builtIn?'I-ONE SOFT BANK PMS 제안서(건설)_기성관리':'MY PROPOSAL');}
+const dialog=$('add-dialog');$('add').onclick=()=>openEditor();$('cancel').onclick=()=>{if(!saving)dialog.close();};
 const supported=/\.(png|jpe?g|webp|gif|avif)$/i;
-let pendingImages=[], saving=false;
-function selectedFiles(){return pendingImages.map(item=>item.file);}
+let pendingImages=[], saving=false, editing=null;
+function openEditor(proposal=null){
+  editing=proposal;$('add-form').reset();$('form-error').textContent='';
+  $('proposal-dialog-title').textContent=proposal?'제안서 수정':'제안서 추가';$('save').textContent=proposal?'수정 내용 저장':'라이브러리에 추가';
+  $('proposal-name').value=proposal?.name??'';$('proposal-subtitle').value=proposal?getSubtitle(proposal):'';
+  $('existing-pdf').textContent=proposal?.pdfUrl?`현재 PDF: ${proposal.pdf?.name??'PMS 제안서 PDF'} · 새 파일을 선택하지 않으면 유지됩니다.`:'';
+  $('remove-pdf').parentElement.hidden=!proposal?.pdfUrl;
+  pendingImages=proposal?proposal.pages.map(p=>({file:null,record:{name:p.name,...(p.blob?{blob:p.blob}:{src:p.src})},url:p.src})):[];
+  renderImageOrder();dialog.showModal();
+}
+function selectedFiles(){return pendingImages.filter(item=>item.file).map(item=>item.file);}
+function draftRecord(name,subtitle,pdfFile){
+  return {id:editing?.id??crypto.randomUUID(),builtIn:editing?.builtIn??false,name,subtitle,
+    pages:pendingImages.map(item=>item.file?{name:item.file.name,blob:item.file}:item.record),
+    pdf:pdfFile?{name:pdfFile.name,blob:new Blob([pdfFile],{type:'application/pdf'})}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null)};
+}
+function upsertProposal(proposal){const index=proposals.findIndex(p=>p.id===proposal.id);if(index<0)proposals.push(proposal);else proposals[index]=proposal;}
 function renderImageOrder(){
   $('image-order').replaceChildren();
   $('file-note').textContent=pendingImages.length?`${pendingImages.length}페이지 · 첫 이미지가 라이브러리 썸네일로 사용됩니다.`:'PNG, JPG, WEBP, GIF, AVIF 이미지 지원';
   pendingImages.forEach((item,index)=>{
     const row=document.createElement('li');
     const preview=document.createElement('img');preview.src=item.url;preview.alt=`${index+1}페이지 미리보기`;
-    const label=document.createElement('span');label.textContent=`${index+1}${index===0?' · 표지':''} — ${item.file.name}`;
+    const label=document.createElement('span');label.textContent=`${index+1}${index===0?' · 표지':''} — ${item.file?.name??item.record.name}`;
     const actions=document.createElement('div');actions.className='image-actions';
     for(const [text,offset] of [['앞으로',-1],['뒤로',1]]){
       const button=document.createElement('button');button.type='button';button.textContent=text;button.setAttribute('aria-label',`${index+1}페이지 ${text}`);
@@ -72,7 +89,7 @@ function renderImageOrder(){
       button.onclick=()=>{if(saving)return;const next=index+offset;[pendingImages[index],pendingImages[next]]=[pendingImages[next],pendingImages[index]];renderImageOrder();$('image-order').children[next].querySelector('button:not(:disabled)')?.focus();};actions.append(button);
     }
     const remove=document.createElement('button');remove.type='button';remove.textContent='제외';remove.setAttribute('aria-label',`${index+1}페이지 제외`);
-    remove.onclick=()=>{if(saving)return;URL.revokeObjectURL(item.url);pendingImages.splice(index,1);renderImageOrder();};actions.append(remove);
+    remove.onclick=()=>{if(saving)return;if(item.file)URL.revokeObjectURL(item.url);pendingImages.splice(index,1);renderImageOrder();};actions.append(remove);
     row.append(preview,label,actions);$('image-order').append(row);
   });
 }
@@ -84,22 +101,22 @@ $('files').onchange=()=>{
   if(!$('proposal-name').value&&files[0])$('proposal-name').value=files[0].name.replace(/\.[^.]+$/,'').slice(0,100);
 };
 dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
-dialog.addEventListener('close',()=>{pendingImages.forEach(item=>URL.revokeObjectURL(item.url));pendingImages=[];$('add-form').reset();renderImageOrder();});
+dialog.addEventListener('close',()=>{pendingImages.filter(item=>item.file).forEach(item=>URL.revokeObjectURL(item.url));pendingImages=[];editing=null;$('add-form').reset();renderImageOrder();});
 function openDatabase(){return new Promise((resolve,reject)=>{const request=indexedDB.open('ione-proposal-library',1);request.onupgradeneeded=()=>request.result.createObjectStore('proposals',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
 function storeRecord(record){return new Promise((resolve,reject)=>{const tx=db.transaction('proposals','readwrite');tx.objectStore('proposals').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
-function hydrate(record){let pdfUrl=null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{const src=URL.createObjectURL(p.blob);urls.push(src);return {name:p.name,src};})};}
+function hydrate(record){let pdfUrl=record.pdf?.src??null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{if(!p.blob)return {...p};const src=URL.createObjectURL(p.blob);urls.push(src);return {...p,src};})};}
 async function validatePdf(file){if(!file)return;const header=new TextDecoder().decode(await file.slice(0,5).arrayBuffer());if(!/\.pdf$/i.test(file.name)||header!=='%PDF-')throw new Error('올바른 PDF 파일을 선택하세요.');}
 async function validateImages(files){for(const file of files){const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();}catch{throw new Error(`이미지를 읽을 수 없습니다: ${file.name}`);}finally{URL.revokeObjectURL(url);}}}
 $('add-form').onsubmit=async event=>{
   event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();const pdfFile=$('pdf-file').files[0];
   if(saving)return;
-  if(!files.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
+  if(!pendingImages.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
   if(!db){$('form-error').textContent='이 브라우저에서 저장소를 사용할 수 없습니다. 일반 브라우저 창에서 다시 시도하세요.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
-  try{await validatePdf(pdfFile);await validateImages(files);const record={id:crypto.randomUUID(),name,pages:files.map(f=>({name:f.name,blob:f})),pdf:pdfFile?{name:pdfFile.name,blob:new Blob([pdfFile],{type:'application/pdf'})}:null};await storeRecord(record);proposals.push(hydrate(record));renderCards();dialog.close();$('add-form').reset();$('file-note').textContent='PNG, JPG, WEBP, GIF, AVIF 이미지 지원';notify('제안서가 이 브라우저에 저장되었습니다.');}
+  try{await validatePdf(pdfFile);await validateImages(files);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);await storeRecord(record);upsertProposal(hydrate(record));renderCards();dialog.close();notify('제안서가 이 브라우저에 저장되었습니다.');}
   catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';}
-  finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent='라이브러리에 추가';}
+  finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent=editing?'수정 내용 저장':'라이브러리에 추가';}
 };
 renderCards();
-(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{proposals.push(...request.result.map(hydrate));renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();
+(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{request.result.map(hydrate).forEach(upsertProposal);renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();
 if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'list_proposals',description:'선택 가능한 제안서 목록 조회',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({proposals:proposals.map(p=>({id:p.id,name:p.name,pages:p.pages.length}))})})).catch(()=>{});}catch{}}
