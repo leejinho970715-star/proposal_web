@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
+proposals.push({id:'eumsquare',name:'이음스퀘어 회사소개서',subtitle:'EUM SQUARE · COMPANY PROFILE',builtIn:true,pdfUrl:'assets/eumsquare/company-profile.pdf',pdf:{name:'이음스퀘어 회사소개서(리뉴얼).pdf',src:'assets/eumsquare/company-profile.pdf'},pages:Array.from({length:17},(_,i)=>({src:`assets/eumsquare/page-${i+1}.png`,name:`${i+1}페이지`}))});
 let active=null, page=0, db=null, returnFocus=null;
 const urls=[];
 function notify(message){$('notice').textContent=message;$('notice').hidden=false;setTimeout(()=>$('notice').hidden=true,5000);}
