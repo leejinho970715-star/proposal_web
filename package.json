@@ -1,0 +1,11 @@
+{
+  "name": "ione-proposal-library",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": { "@vercel/blob": "2.8.0" },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

@@ -1,55 +1,37 @@
 # 제안서 라이브러리
 
-아이원소프트뱅크 PMS 구축 제안서를 1~25페이지 순서대로 보여 주는 정적 웹사이트입니다.
+PMS 제안서 25장과 이음스퀘어 회사소개서 17장을 기본 제공하며, 관리자 업로드·수정·삭제를 Vercel Blob에 공용 저장합니다.
 
 ## 사용
 
-- 제안서 카드 선택 → 슬라이드 보기
-- 화면 좌우 끝 버튼, 마우스 휠, 트랙패드 또는 좌우 방향키로 페이지 이동
-- 모바일에서는 좌우 스와이프, Home / End 키로 첫 페이지 / 마지막 페이지 이동
-- 목록의 **제안서 추가**에서 이름 입력 후 여러 이미지 파일 선택
-- 이미지는 파일 선택기가 전달한 순서로 추가됩니다. 추가 창의 미리보기에서 앞으로 / 뒤로 버튼으로 순서를 확정하세요. 목록의 이미지 수만큼 슬라이드가 만들어지고 첫 이미지가 표지와 라이브러리 썸네일이 됩니다. 다시 선택하면 기존 목록 뒤에 이미지를 더 추가할 수 있습니다.
+- 방문자는 슬라이드와 PDF를 열람합니다. 좌우 버튼, 휠, 방향키, 터치로 넘길 수 있습니다.
+- **관리자 로그인**에 Vercel의 ADMIN_ACCESS_KEY를 입력합니다. 키는 브라우저 메모리에만 보관하며 새로고침하면 다시 로그인합니다.
+- **제안서 추가**에서 제목·소제목·여러 이미지·선택 PDF를 등록합니다. 미리보기에서 순서를 바꿀 수 있고 첫 이미지가 썸네일입니다.
+- 저장 후 다른 기기에서도 새로고침하면 같은 자료를 봅니다. GitHub Pages도 동일한 Vercel API를 사용합니다.
+- 수정·삭제는 관리자만 할 수 있습니다. 삭제는 모든 방문자의 목록에 적용되며 기존 파일 링크까지 폐기하지는 않습니다.
+- 이전 IndexedDB 자료는 로그인 후 **이 브라우저에 보관된 제안서**에서 확인하고 공유할 수 있습니다. 원래 업로드했던 브라우저와 주소에서 접속해야 하며 원본은 자동 삭제하지 않습니다. 기본 등록된 이음스퀘어 자료는 중복 공유하지 않도록 확인하세요.
 
-추가한 제안서는 현재 브라우저의 IndexedDB에 저장되어 새로고침 후에도 유지됩니다. 서버나 GitHub에 업로드되지 않으며 다른 방문자와 자동 공유되지 않습니다. 브라우저 데이터를 삭제하면 추가 자료도 사라집니다. 모든 방문자에게 공유할 제안서는 저장소에 이미지와 목록을 추가한 뒤 커밋해야 합니다.
+## 환경 설정과 배포
 
-## 로컬 실행
+Vercel 프로젝트에 Public Blob Store를 연결하여 BLOB_READ_WRITE_TOKEN을 주입합니다. ADMIN_ACCESS_KEY는 Production의 Secret으로 32자 이상 무작위 값을 설정합니다. 실제 값은 저장소·채팅에 남기지 않습니다. 키가 없거나 짧으면 쓰기가 차단됩니다.
 
-Node.js가 설치된 환경에서 저장소 루트에서 실행하세요.
+vercel.json은 npm run build로 빌드하고 proposal-site/dist를 배포합니다. 루트 api/는 Vercel Functions입니다. main 푸시로 Vercel과 GitHub Pages가 자동 배포됩니다.
 
 ```sh
+npm ci
+npm test
+npm run build
 node proposal-site/server.cjs
 ```
 
-브라우저에서 http://127.0.0.1:4173 을 엽니다. 별도 패키지 설치나 빌드가 필요 없습니다.
+로컬 정적 서버는 화면 확인용입니다. 실제 API는 Vercel 환경에서 실행됩니다. vercel dev를 쓰려면 프로젝트 환경변수를 로컬에 연결해야 합니다.
 
-## 파일 구성
+## 저장 구조
 
-- `proposal-site/dist/index.html`: 목록, 슬라이드, 제안서 추가 창
-- `proposal-site/dist/style.css`: 반응형 레이아웃
-- `proposal-site/dist/app.js`: 슬라이드 이동 및 브라우저 저장
-- `proposal-site/dist/assets/page-1.png` ~ `page-25.png`: 원본 제안서 이미지
-- `.github/workflows/pages.yml`: main 브랜치 푸시 시 GitHub Pages 자동 배포
+- media/UUID.extension: 브라우저에서 Blob으로 직접 업로드. 이미지당 25MB, PDF 200MB, 제안서당 300페이지.
+- library/catalog.json: 제목·소제목·이미지 순서·PDF URL·삭제 표시. ETag 비교로 동시 수정 충돌을 감지합니다.
+- 서버는 동일 저장소의 미디어 URL과 기본 자료 경로만 허용합니다. Blob 토큰은 서버에만 있습니다.
+- 실패한 업로드나 삭제한 자료의 파일은 저장소에 남을 수 있습니다. 목록 삭제는 저장 공간 회수나 파일 접근 권한 회수가 아닙니다.
+- 기본 자료: assets/page-1.png ~ page-25.png, assets/pms-proposal.pdf, assets/eumsquare/page-1.png ~ page-17.png, assets/eumsquare/company-profile.pdf.
 
-## 배포
-
-저장소의 Settings → Pages → Source를 **GitHub Actions**로 설정합니다. `main`에 푸시하면 자동 배포됩니다.
-
-사이트 주소: https://leejinho970715-star.github.io/proposal_web/
-
-## Vercel 배포
-
-GitHub 저장소를 연결하고 Root Directory는 저장소 루트로 유지하세요. 루트의 `vercel.json`이 정적 사이트 폴더인 `proposal-site/dist`를 Output Directory로 지정합니다. 패키지 설치나 빌드 명령은 필요하지 않습니다. `main`에 푸시하면 연결된 Vercel 프로젝트가 자동 재배포됩니다.
-
-Vercel 사이트 주소: https://proposalweb-plum.vercel.app/
-
-## PDF 보기
-
-이음스퀘어 회사소개서는 모든 방문자에게 표시되는 기본 자료로 등록되어 있습니다. `assets/eumsquare/page-1.png`부터 `page-17.png`까지 원본 파일의 숫자 순서(8-1, 8-2, 9-1, 9-2, 10-1, 10-2 포함)로 배치했으며, `company-profile.pdf`는 첨부 원본입니다.
-
-기본 PMS 제안서 카드의 PDF 보기에서 첨부 원본 PDF를 새 탭으로 엽니다. 제안서 추가 시 슬라이드 이미지와 PDF 한 개를 함께 선택할 수 있습니다. PDF 첨부는 선택 사항이며, 첨부한 제안서에만 PDF 보기 버튼이 표시됩니다. 추가 PDF도 이미지와 함께 현재 브라우저에 저장되어 새로고침 후 유지됩니다.
-
-## 제안서 수정
-
-각 카드의 삭제 버튼으로 현재 브라우저 목록에서 항목을 삭제할 수 있습니다. 확인 후 삭제하며, 기본 자료도 삭제 표시를 저장하여 새로고침 후 숨김 상태를 유지합니다. 공용 저장소 연결 전까지 삭제는 다른 방문자에게 전파되지 않습니다.
-
-각 카드의 수정하기 버튼에서 기존 제목·소제목·이미지 순서·PDF를 불러와 편집할 수 있습니다. PDF를 새로 선택하지 않으면 기존 PDF가 유지됩니다. 기본 PMS 제안서 수정도 현재 브라우저에만 저장되며 다른 방문자에게 공유되지 않습니다. 취소하면 기존 내용이 유지됩니다.
+[Vercel](https://proposalweb-plum.vercel.app/) · [GitHub Pages](https://leejinho970715-star.github.io/proposal_web/)

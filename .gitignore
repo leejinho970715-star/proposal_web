@@ -3,3 +3,7 @@ proposal-site/.sites-runtime/
 node_modules/
 *.log
 .DS_Store
+.env*
+!.env.example
+.vercel/
+proposal-site/dist/cloud-client.js

@@ -1,6 +1,9 @@
+import { cloud } from './cloud-client.js';
 const $ = (id) => document.getElementById(id);
+let admin=false, cloudReady=false, localRecords=[];
 const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
 proposals.push({id:'eumsquare',name:'이음스퀘어 회사소개서',subtitle:'EUM SQUARE · COMPANY PROFILE',builtIn:true,pdfUrl:'assets/eumsquare/company-profile.pdf',pdf:{name:'이음스퀘어 회사소개서(리뉴얼).pdf',src:'assets/eumsquare/company-profile.pdf'},pages:Array.from({length:17},(_,i)=>({src:`assets/eumsquare/page-${i+1}.png`,name:`${i+1}페이지`}))});
+const defaults=structuredClone(proposals);
 let active=null, page=0, db=null, returnFocus=null;
 const urls=[];
 function notify(message){$('notice').textContent=message;$('notice').hidden=false;setTimeout(()=>$('notice').hidden=true,5000);}
@@ -19,28 +22,28 @@ function renderCards(){
     const open=document.createElement('button');open.type='button';open.className='slide-action';open.textContent='슬라이드 보가';open.setAttribute('aria-label',`${proposal.name} 슬라이드 보가`);
     open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
     if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
-    const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
+    if(admin){    const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
     const remove=document.createElement('button');remove.type='button';remove.className='pdf-action delete-action';remove.textContent='삭제';remove.setAttribute('aria-label',`${proposal.name} 삭제`);remove.onclick=()=>openDelete(proposal,remove);actions.append(remove);
+    }
     bottom.append(count);info.append(meta,title,bottom,actions);button.append(cover);
     button.addEventListener('click',()=>{returnFocus=button;openProposal(proposal.id);});card.append(button,info);$('cards').append(card);
   });
   if(!proposals.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='등록된 제안서가 없습니다. 제안서 추가 버튼으로 새 자료를 등록하세요.';$('cards').append(empty);}
 }
 let deleting=null,deleteBusy=false,deleteFocus=null;
-function openDelete(proposal,button){deleting=proposal;deleteFocus=button;$('delete-name').textContent=proposal.name;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
+function openDelete(proposal,button){if(!admin||!cloudReady)return;deleting=proposal;deleteFocus=button;$('delete-name').textContent=proposal.name;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
 $('delete-cancel').onclick=()=>{if(!deleteBusy)$('delete-dialog').close();};
 $('delete-dialog').addEventListener('cancel',event=>{if(deleteBusy)event.preventDefault();});
 $('delete-dialog').addEventListener('close',()=>{deleting=null;if(deleteFocus?.isConnected)deleteFocus.focus();else $('add').focus();deleteFocus=null;});
 $('delete-form').onsubmit=async event=>{
   event.preventDefault();if(deleteBusy||!deleting)return;
-  if(!db){$('delete-error').textContent='브라우저 저장소를 사용할 수 없어 삭제하지 못했습니다. 다시 시도하세요.';return;}
+  if(!admin||!cloudReady){$('delete-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   deleteBusy=true;$('delete-confirm').disabled=true;$('delete-cancel').disabled=true;
   try{
-    // Persist a small tombstone so bundled proposals stay removed after reload.
-    await storeRecord({id:deleting.id,deleted:true});
+    await cloud.remove(deleting.id);
     const index=proposals.findIndex(item=>item.id===deleting.id);if(index>=0)proposals.splice(index,1);
-    renderCards();$('delete-dialog').close();notify('이 브라우저의 목록에서 삭제했습니다.');
-  }catch{$('delete-error').textContent='삭제하지 못했습니다. 잠시 후 다시 시도하세요.';}
+    renderCards();$('delete-dialog').close();notify('공용 라이브러리에서 삭제했습니다.');
+  }catch(error){$('delete-error').textContent=error.message||'삭제하지 못했습니다. 잠시 후 다시 시도하세요.';}
   finally{deleteBusy=false;$('delete-confirm').disabled=false;$('delete-cancel').disabled=false;}
 };
 function updatePage(){
@@ -80,6 +83,8 @@ const dialog=$('add-dialog');$('add').onclick=()=>openEditor();$('cancel').oncli
 const supported=/\.(png|jpe?g|webp|gif|avif)$/i;
 let pendingImages=[], saving=false, editing=null;
 function openEditor(proposal=null){
+  if(!admin){$('auth-dialog').showModal();return;}
+  if(!cloudReady){notify('공용 저장소 연결을 확인한 뒤 다시 시도하세요.');return;}
   editing=proposal;$('add-form').reset();$('form-error').textContent='';
   $('proposal-dialog-title').textContent=proposal?'제안서 수정':'제안서 추가';$('save').textContent=proposal?'수정 내용 저장':'라이브러리에 추가';
   $('proposal-name').value=proposal?.name??'';$('proposal-subtitle').value=proposal?getSubtitle(proposal):'';
@@ -131,12 +136,37 @@ $('add-form').onsubmit=async event=>{
   event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();const pdfFile=$('pdf-file').files[0];
   if(saving)return;
   if(!pendingImages.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
-  if(!db){$('form-error').textContent='이 브라우저에서 저장소를 사용할 수 없습니다. 일반 브라우저 창에서 다시 시도하세요.';return;}
+  if(!admin||!cloudReady){$('form-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
-  try{await validatePdf(pdfFile);await validateImages(files);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);await storeRecord(record);upsertProposal(hydrate(record));renderCards();dialog.close();notify('제안서가 이 브라우저에 저장되었습니다.');}
+  try{await validatePdf(pdfFile);await validateImages(files);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);const saved=await cloud.save(record,message=>$('save').textContent=message);upsertProposal(hydrate(saved));renderCards();dialog.close();notify('제안서가 공유되었습니다. 다른 PC에서도 볼 수 있습니다.');}
   catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';}
   finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent=editing?'수정 내용 저장':'라이브러리에 추가';}
 };
 renderCards();
-(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{request.result.forEach(record=>{if(record.deleted){const index=proposals.findIndex(item=>item.id===record.id);if(index>=0)proposals.splice(index,1);}else upsertProposal(hydrate(record));});renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();
+function renderLocalRecords(){
+  $('local-records').replaceChildren();$('migration').hidden=!admin||!localRecords.length;
+  for(const record of localRecords){
+    const row=document.createElement('div');row.className='local-record';
+    const label=document.createElement('span');label.textContent=record.name;
+    const button=document.createElement('button');button.className='pdf-action';button.textContent='확인 후 공유하기';
+    button.onclick=()=>openEditor(hydrate(record));row.append(label,button);$('local-records').append(row);
+  }
+}
+$('admin').onclick=()=>{if(admin){cloud.logout();admin=false;$('admin').textContent='관리자 로그인';renderCards();renderLocalRecords();}else $('auth-dialog').showModal();};
+$('auth-cancel').onclick=()=>$('auth-dialog').close();
+$('auth-dialog').addEventListener('close',()=>{$('admin-key').value='';$('auth-error').textContent='';});
+$('auth-form').onsubmit=async event=>{
+  event.preventDefault();$('auth-submit').disabled=true;$('auth-error').textContent='';
+  try{await cloud.login($('admin-key').value);admin=true;$('admin').textContent='관리자 로그아웃';$('auth-dialog').close();renderCards();renderLocalRecords();}
+  catch(error){$('auth-error').textContent=error.message;}
+  finally{$('auth-submit').disabled=false;}
+};
+async function loadShared(){
+  $('storage-status').textContent='공유 제안서를 불러오는 중…';
+  try{const records=await cloud.load();proposals.splice(0,proposals.length,...structuredClone(defaults));for(const record of records){if(record.deleted){const index=proposals.findIndex(p=>p.id===record.id);if(index>=0)proposals.splice(index,1);}else upsertProposal(hydrate(record));}cloudReady=true;renderCards();$('storage-status').textContent='공용 라이브러리 · 추가·수정·삭제한 내용은 모든 기기에서 반영됩니다.';}
+  catch(error){cloudReady=false;$('storage-status').textContent=`${error.message} 기존 기본 제안서는 계속 볼 수 있습니다.`;}
+}
+$('refresh-library').onclick=loadShared;
+loadShared();
+(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{localRecords=request.result.filter(record=>!record.deleted);renderLocalRecords();};}catch{/* Shared library remains available without browser storage. */}})();
 if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'list_proposals',description:'선택 가능한 제안서 목록 조회',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({proposals:proposals.map(p=>({id:p.id,name:p.name,pages:p.pages.length}))})})).catch(()=>{});}catch{}}
