@@ -8,7 +8,7 @@ async function request(path, body, authenticated = false) {
   return data;
 }
 export const cloud = {
-  async login(value) { key = value; try { await request('admin', {}, true); } catch (error) { key = ''; throw error; } },
+  async login(value) { key = value.trim(); try { await request('admin', {}, true); } catch (error) { key = ''; throw error; } },
   logout() { key = ''; },
   async load() { const data = await request('library'); revision = data.revision; return data.records; },
   async remove(id) { const data = await request('library', { revision, action: 'delete', id }, true); revision = data.revision; },

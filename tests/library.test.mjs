@@ -26,6 +26,7 @@ async function call(handler, method, body, authenticated=false) {
 test('authentication fails closed and checks complete bearer value',()=>{
   assert.equal(isAdmin(undefined,key),false);assert.equal(isAdmin(`Bearer ${key}`,key),true);
   assert.equal(isAdmin(`Bearer ${key}x`,key),false);assert.equal(isAdmin('Bearer short','short'),false);
+  assert.equal(isAdmin(`Bearer ${key} `,` ${key}\n`),true);
 });
 test('media URLs must belong to this store; built-in documents remain editable',()=>{
   assert.equal(validateRecord(proposal,host).name,proposal.name);
