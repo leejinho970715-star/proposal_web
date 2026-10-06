@@ -7,3 +7,5 @@
 .card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.slide-action,.pdf-action{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border:1px solid #dbe2f4;border-radius:7px;background:#f5f7ff;color:#3156dc;font-size:14px;font-weight:600;text-decoration:none}.pdf-action{background:#fff;color:#263954}.pdf-action:hover{background:#edf3ff}.pdf-action:focus-visible{outline:3px solid #7798ff;outline-offset:3px}
 
 .pdf-remove-label{display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;margin:10px 0}.pdf-remove-label input{width:auto}.card-meta{overflow-wrap:anywhere;line-height:1.6}#add-dialog{max-height:90dvh;overflow-y:auto}
+
+.delete-action{color:#b42318}.delete-action:hover{background:#fff1f0}

@@ -20,10 +20,29 @@ function renderCards(){
     open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
     if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
     const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
+    const remove=document.createElement('button');remove.type='button';remove.className='pdf-action delete-action';remove.textContent='삭제';remove.setAttribute('aria-label',`${proposal.name} 삭제`);remove.onclick=()=>openDelete(proposal,remove);actions.append(remove);
     bottom.append(count);info.append(meta,title,bottom,actions);button.append(cover);
     button.addEventListener('click',()=>{returnFocus=button;openProposal(proposal.id);});card.append(button,info);$('cards').append(card);
   });
+  if(!proposals.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='등록된 제안서가 없습니다. 제안서 추가 버튼으로 새 자료를 등록하세요.';$('cards').append(empty);}
 }
+let deleting=null,deleteBusy=false,deleteFocus=null;
+function openDelete(proposal,button){deleting=proposal;deleteFocus=button;$('delete-name').textContent=proposal.name;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
+$('delete-cancel').onclick=()=>{if(!deleteBusy)$('delete-dialog').close();};
+$('delete-dialog').addEventListener('cancel',event=>{if(deleteBusy)event.preventDefault();});
+$('delete-dialog').addEventListener('close',()=>{deleting=null;if(deleteFocus?.isConnected)deleteFocus.focus();else $('add').focus();deleteFocus=null;});
+$('delete-form').onsubmit=async event=>{
+  event.preventDefault();if(deleteBusy||!deleting)return;
+  if(!db){$('delete-error').textContent='브라우저 저장소를 사용할 수 없어 삭제하지 못했습니다. 다시 시도하세요.';return;}
+  deleteBusy=true;$('delete-confirm').disabled=true;$('delete-cancel').disabled=true;
+  try{
+    // Persist a small tombstone so bundled proposals stay removed after reload.
+    await storeRecord({id:deleting.id,deleted:true});
+    const index=proposals.findIndex(item=>item.id===deleting.id);if(index>=0)proposals.splice(index,1);
+    renderCards();$('delete-dialog').close();notify('이 브라우저의 목록에서 삭제했습니다.');
+  }catch{$('delete-error').textContent='삭제하지 못했습니다. 잠시 후 다시 시도하세요.';}
+  finally{deleteBusy=false;$('delete-confirm').disabled=false;$('delete-cancel').disabled=false;}
+};
 function updatePage(){
   $('current').textContent=String(page+1).padStart(2,'0');$('total').textContent=String(active.pages.length).padStart(2,'0');
   $('top-count').textContent=`${page+1} / ${active.pages.length}`;$('progress-fill').style.width=`${(page+1)/active.pages.length*100}%`;
@@ -119,5 +138,5 @@ $('add-form').onsubmit=async event=>{
   finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent=editing?'수정 내용 저장':'라이브러리에 추가';}
 };
 renderCards();
-(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{request.result.map(hydrate).forEach(upsertProposal);renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();
+(async()=>{try{db=await openDatabase();const request=db.transaction('proposals').objectStore('proposals').getAll();request.onsuccess=()=>{request.result.forEach(record=>{if(record.deleted){const index=proposals.findIndex(item=>item.id===record.id);if(index>=0)proposals.splice(index,1);}else upsertProposal(hydrate(record));});renderCards();};request.onerror=()=>notify('저장된 제안서를 불러오지 못했습니다.');}catch{notify('브라우저 저장소를 사용할 수 없어 제안서 추가가 제한됩니다.');}})();
 if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'list_proposals',description:'선택 가능한 제안서 목록 조회',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({proposals:proposals.map(p=>({id:p.id,name:p.name,pages:p.pages.length}))})})).catch(()=>{});}catch{}}
