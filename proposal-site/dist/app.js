@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 let admin=false, cloudReady=false, localRecords=[];
 const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
 proposals.push({id:'eumsquare',name:'이음스퀘어 회사소개서 (NEW)',subtitle:'EUM SQUARE · COMPANY PROFILE',builtIn:true,pdfUrl:'assets/eumsquare-new/company-profile.pdf',pdf:{name:'이음스퀘어 회사소개서(new).pdf',src:'assets/eumsquare-new/company-profile.pdf'},pages:Array.from({length:17},(_,i)=>({src:`assets/eumsquare-new/page-${i+1}.png`,name:`${i+1}페이지`}))});
-proposals.push({id:'pms-new',name:'PMS 구축 제안서(New)',subtitle:'I-ONE SOFT BANK PMS 제안서(건설)_기성관리',builtIn:true,pdfUrl:'assets/pms-new/proposal.pdf',pdf:{name:'아이원_PMS 제안서(건설)_기성관리(new).pdf',src:'assets/pms-new/proposal.pdf'},pages:Array.from({length:26},(_,i)=>({src:`assets/pms-new/page-${i+1}.png`,name:`${i+1}페이지`}))});
+proposals.push({id:'pms-new',name:'PMS 구축 제안서(New)',subtitle:'I-ONE SOFT BANK PMS 제안서(건설)_기성관리',builtIn:true,pdfUrl:'assets/pms-new-v2/proposal.pdf',pdf:{name:'아이원_PMS 제안서(건설)_기성관리(new).pdf',src:'assets/pms-new-v2/proposal.pdf'},pages:Array.from({length:26},(_,i)=>({src:`assets/pms-new-v2/page-${i+1}.png`,name:`${i+1}페이지`}))});
 const defaults=structuredClone(proposals);
 let active=null, page=0, db=null, returnFocus=null;
 const urls=[];
