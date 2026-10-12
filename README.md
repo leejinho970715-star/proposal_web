@@ -30,7 +30,8 @@ node proposal-site/server.cjs
 
 - media/UUID.extension: 브라우저에서 Blob으로 직접 업로드. 이미지당 25MB, PDF 200MB, 제안서당 300페이지.
 - library/catalog.json: 제목·소제목·이미지 순서·PDF URL·삭제 표시. 제안서별 내용 버전으로 수정 충돌을 감지하고, 목록 쓰기는 ETag로 보호합니다. 다른 항목의 동시 저장은 자동으로 병합하며 같은 항목의 충돌에서는 입력 내용을 유지하고 사용자가 확인 후 다시 저장할 수 있습니다.
-- 공개 CDN 응답의 약한 ETag를 쓰기 조건으로 사용하지 않습니다. head()에서 원본 ETag를 읽고 해당 버전 URL로 목록을 가져와 내용 버전을 확인한 뒤 조건부 저장합니다.
+- 공개 CDN 응답의 약한 ETag를 쓰기 조건으로 사용하지 않습니다. head()에서 원본 ETag를 읽고 해당 버전의 목록 스냅샷을 가져온 뒤 조건부 저장합니다.
+- library/catalog-versions/내용해시.json: 변경하지 않는 목록 스냅샷. 저장 전에 다음 스냅샷을 먼저 만들고 catalog.json을 조건부 갱신합니다. 방문자는 원본 메타데이터가 가리키는 스냅샷을 읽으므로 공개 CDN에 이전 catalog.json이 남아 있어도 최신 내용을 볼 수 있습니다. 기존 목록은 첫 조회 때 스냅샷을 생성합니다.
 - 서버는 동일 저장소의 미디어 URL과 기본 자료 경로만 허용합니다. Blob 토큰은 서버에만 있습니다.
 - 실패한 업로드나 삭제한 자료의 파일은 저장소에 남을 수 있습니다. 목록 삭제는 저장 공간 회수나 파일 접근 권한 회수가 아닙니다.
 - 기본 자료: assets/page-1.png ~ page-25.png, assets/pms-proposal.pdf, assets/eumsquare/page-1.png ~ page-17.png, assets/eumsquare/company-profile.pdf.

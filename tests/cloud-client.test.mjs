@@ -3,18 +3,14 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createHandler } from '../api/library.js';
 import { createCloudClient } from '../src/cloud-client.js';
+import { memoryStore } from './blob-store.mjs';
 
 const host='test.public.blob.vercel-storage.com';
 const id='b0b807cd-4480-43a4-b54b-456b979ef631';
 const key=randomBytes(32).toString('hex');process.env.ADMIN_ACCESS_KEY=key;
 const record={id,name:'제안서',subtitle:'',pages:[{name:'1.png',src:'assets/page-1.png'}],pdf:null};
 function server() {
-  let stored=null,version=0;
-  const handler=createHandler({
-    async headBlob(){return {url:`https://${host}/library/catalog.json`,etag:`"${version}"`};},
-    async getBlob(){return stored===null?null:{blob:{url:`https://${host}/library/catalog.json`,etag:`W/"${version}"`},stream:new Response(stored).body};},
-    async putBlob(path,value,options){if(stored!==null&&(!options.allowOverwrite||options.ifMatch!==`"${version}"`)){const error=new Error('Precondition');error.name='BlobPreconditionFailedError';throw error;}stored=value;return {etag:String(++version)};}
-  });
+  const handler=createHandler(memoryStore({cacheCatalog:true}));
   return async (url,options)=>{
     if(url.endsWith('/admin'))return Response.json({ok:true});
     const response={code:200,status(n){this.code=n;return this;},setHeader(){},json(value){this.value=value;},end(){}};
