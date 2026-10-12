@@ -31,8 +31,8 @@ function renderCards(){
   });
   if(!proposals.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='등록된 제안서가 없습니다. 제안서 추가 버튼으로 새 자료를 등록하세요.';$('cards').append(empty);}
 }
-let deleting=null,deleteBusy=false,deleteFocus=null;
-function openDelete(proposal,button){if(!admin||!cloudReady)return;deleting=proposal;deleteFocus=button;$('delete-name').textContent=proposal.name;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
+let deleting=null,deleteBusy=false,deleteFocus=null,deletingVersion=null;
+function openDelete(proposal,button){if(!admin||!cloudReady)return;deleting=proposal;deletingVersion=cloud.getVersion(proposal.id);deleteFocus=button;$('delete-name').textContent=proposal.name;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
 $('delete-cancel').onclick=()=>{if(!deleteBusy)$('delete-dialog').close();};
 $('delete-dialog').addEventListener('cancel',event=>{if(deleteBusy)event.preventDefault();});
 $('delete-dialog').addEventListener('close',()=>{deleting=null;if(deleteFocus?.isConnected)deleteFocus.focus();else $('add').focus();deleteFocus=null;});
@@ -41,10 +41,10 @@ $('delete-form').onsubmit=async event=>{
   if(!admin||!cloudReady){$('delete-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   deleteBusy=true;$('delete-confirm').disabled=true;$('delete-cancel').disabled=true;
   try{
-    await cloud.remove(deleting.id);
+    await cloud.remove(deleting.id,deletingVersion);
     const index=proposals.findIndex(item=>item.id===deleting.id);if(index>=0)proposals.splice(index,1);
     renderCards();$('delete-dialog').close();notify('공용 라이브러리에서 삭제했습니다.');
-  }catch(error){$('delete-error').textContent=error.message||'삭제하지 못했습니다. 잠시 후 다시 시도하세요.';}
+  }catch(error){$('delete-error').textContent=error.code==='PROPOSAL_CONFLICT'?'이 제안서가 다른 곳에서 변경되었습니다. 취소한 뒤 목록을 새로고침하고 최신 내용을 확인해주세요.':error.message||'삭제하지 못했습니다. 잠시 후 다시 시도하세요.';}
   finally{deleteBusy=false;$('delete-confirm').disabled=false;$('delete-cancel').disabled=false;}
 };
 function updatePage(){
@@ -82,11 +82,11 @@ let resizeTimer;window.addEventListener('resize',()=>{if(!active)return;const se
 function getSubtitle(proposal){return proposal.subtitle??(proposal.builtIn?'I-ONE SOFT BANK PMS 제안서(건설)_기성관리':'MY PROPOSAL');}
 const dialog=$('add-dialog');$('add').onclick=()=>openEditor();$('cancel').onclick=()=>{if(!saving)dialog.close();};
 const supported=/\.(png|jpe?g|webp|gif|avif)$/i;
-let pendingImages=[], saving=false, editing=null;
+let pendingImages=[], saving=false, editing=null, editingVersion=null;
 function openEditor(proposal=null){
   if(!admin){$('auth-dialog').showModal();return;}
   if(!cloudReady){notify('공용 저장소 연결을 확인한 뒤 다시 시도하세요.');return;}
-  editing=proposal;$('add-form').reset();$('form-error').textContent='';
+  editing=proposal;editingVersion=proposal?cloud.getVersion(proposal.id):null;$('add-form').reset();$('form-error').textContent='';$('resolve-conflict').hidden=true;
   $('proposal-dialog-title').textContent=proposal?'제안서 수정':'제안서 추가';$('save').textContent=proposal?'수정 내용 저장':'라이브러리에 추가';
   $('proposal-name').value=proposal?.name??'';$('proposal-subtitle').value=proposal?getSubtitle(proposal):'';
   $('existing-pdf').textContent=proposal?.pdfUrl?`현재 PDF: ${proposal.pdf?.name??'PMS 제안서 PDF'} · 새 파일을 선택하지 않으면 유지됩니다.`:'';
@@ -98,7 +98,7 @@ function selectedFiles(){return pendingImages.filter(item=>item.file).map(item=>
 function draftRecord(name,subtitle,pdfFile){
   return {id:editing?.id??crypto.randomUUID(),builtIn:editing?.builtIn??false,name,subtitle,
     pages:pendingImages.map(item=>item.file?{name:item.file.name,blob:item.file}:item.record),
-    pdf:pdfFile?{name:pdfFile.name,blob:new Blob([pdfFile],{type:'application/pdf'})}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null)};
+    pdf:pdfFile?{name:pdfFile.name,blob:pdfFile}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null)};
 }
 function upsertProposal(proposal){const index=proposals.findIndex(p=>p.id===proposal.id);if(index<0)proposals.push(proposal);else proposals[index]=proposal;}
 function renderImageOrder(){
@@ -139,9 +139,17 @@ $('add-form').onsubmit=async event=>{
   if(!pendingImages.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
   if(!admin||!cloudReady){$('form-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
-  try{await validatePdf(pdfFile);await validateImages(files);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);const saved=await cloud.save(record,message=>$('save').textContent=message);upsertProposal(hydrate(saved));renderCards();dialog.close();notify('제안서가 공유되었습니다. 다른 PC에서도 볼 수 있습니다.');}
-  catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';}
+  try{await validatePdf(pdfFile);await validateImages(files);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);const saved=await cloud.save(record,message=>$('save').textContent=message,editingVersion);upsertProposal(hydrate(saved));renderCards();dialog.close();notify('제안서가 공유되었습니다. 다른 PC에서도 볼 수 있습니다.');}
+  catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';$('resolve-conflict').hidden=error.code!=='PROPOSAL_CONFLICT';}
   finally{saving=false;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent=editing?'수정 내용 저장':'라이브러리에 추가';}
+};
+$('resolve-conflict').onclick=async()=>{
+  if(saving||!editing)return;
+  if(!confirm('다른 곳에서 수정하거나 삭제한 이 제안서를 현재 입력한 내용으로 덮어쓸까요?'))return;
+  $('resolve-conflict').disabled=true;
+  try{editingVersion=await cloud.refreshVersion(editing.id);$('resolve-conflict').hidden=true;$('resolve-conflict').disabled=false;$('add-form').requestSubmit();}
+  catch(error){$('form-error').textContent=error.message;}
+  finally{$('resolve-conflict').disabled=false;}
 };
 renderCards();
 function renderLocalRecords(){
