@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { isAdmin, validateRecord, normalizeEtag } from '../lib/library.mjs';
+import { isAdmin, validateRecord } from '../lib/library.mjs';
 import { createHandler } from '../api/library.js';
 import upload from '../api/upload.js';
 
@@ -13,9 +13,10 @@ function response() { return { headers: {}, statusCode: 200, setHeader(k,v){this
 function memoryStore() {
   let content = null, version = 0;
   return {
-    async getBlob(path, options) { assert.equal(options.useCache,false); return content === null ? null : { blob: { url: `https://${host}/${path}`, etag: `"${version}"` }, stream: new Response(content).body }; },
+    async headBlob() { return {url: `https://${host}/library/catalog.json`, etag: `"${version}"`}; },
+    async getBlob(path, options) { assert.equal(options.useCache,false); return content === null ? null : { blob: { url: `https://${host}/library/catalog.json`, etag: `W/"${version}"` }, stream: new Response(content).body }; },
     async putBlob(path, value, options) {
-      if (content !== null && (!options.allowOverwrite || normalizeEtag(options.ifMatch) !== String(version))) { const error = new Error('Precondition failed'); error.name='BlobPreconditionFailedError'; throw error; }
+      if (content !== null && (!options.allowOverwrite || options.ifMatch !== `"${version}"`)) { const error = new Error('Precondition failed'); error.name='BlobPreconditionFailedError'; throw error; }
       content=value; version++; return {etag:String(version)};
     }
   };
@@ -27,6 +28,32 @@ test('authentication fails closed and checks complete bearer value',()=>{
   assert.equal(isAdmin(undefined,key),false);assert.equal(isAdmin(`Bearer ${key}`,key),true);
   assert.equal(isAdmin(`Bearer ${key}x`,key),false);assert.equal(isAdmin('Bearer short','short'),false);
   assert.equal(isAdmin(`Bearer ${key} `,` ${key}\n`),true);
+});
+
+test('origin metadata selects a fresh catalog URL and cached old contents cannot overwrite current data',async()=>{
+  const store=memoryStore();const initial=createHandler(store);await call(initial,'GET');
+  const saved=await call(initial,'POST',{baseVersion:null,record:proposal},true);
+  let staleReads=0;
+  const handler=createHandler({...store,async getBlob(path,options){
+    if(path.startsWith('https:')){
+      assert.equal(new URL(path).searchParams.get('version'),saved.data.revision);
+      if(staleReads++===0)return {blob:{url:`https://${host}/library/catalog.json`,etag:'W/"1"'},stream:new Response('[]').body};
+    }
+    return store.getBlob(path,options);
+  }});
+  const result=await call(handler,'GET');assert.equal(result.statusCode,200);
+  assert.equal(result.data.records[0].name,proposal.name);assert.equal(staleReads,2);
+});
+
+test('an older cached catalog paired with a new origin ETag is never written',async()=>{
+  let writes=0;
+  const handler=createHandler({
+    async headBlob(){return {url:`https://${host}/library/catalog.json`,etag:'"new"'};},
+    async getBlob(){return {blob:{url:`https://${host}/library/catalog.json`,etag:'W/"old"'},stream:new Response('[]').body};},
+    async putBlob(){writes++;}
+  });
+  const result=await call(handler,'POST',{baseVersion:null,record:proposal},true);
+  assert.equal(result.statusCode,503);assert.equal(writes,0);
 });
 test('media URLs must belong to this store; built-in documents remain editable',()=>{
   assert.equal(validateRecord(proposal,host).name,proposal.name);

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createHandler } from '../api/library.js';
 import { createCloudClient } from '../src/cloud-client.js';
-import { normalizeEtag } from '../lib/library.mjs';
 
 const host='test.public.blob.vercel-storage.com';
 const id='b0b807cd-4480-43a4-b54b-456b979ef631';
@@ -12,8 +11,9 @@ const record={id,name:'제안서',subtitle:'',pages:[{name:'1.png',src:'assets/p
 function server() {
   let stored=null,version=0;
   const handler=createHandler({
-    async getBlob(){return stored===null?null:{blob:{url:`https://${host}/library/catalog.json`,etag:`"${version}"`},stream:new Response(stored).body};},
-    async putBlob(path,value,options){if(stored!==null&&(!options.allowOverwrite||normalizeEtag(options.ifMatch)!==String(version))){const error=new Error('Precondition');error.name='BlobPreconditionFailedError';throw error;}stored=value;return {etag:String(++version)};}
+    async headBlob(){return {url:`https://${host}/library/catalog.json`,etag:`"${version}"`};},
+    async getBlob(){return stored===null?null:{blob:{url:`https://${host}/library/catalog.json`,etag:`W/"${version}"`},stream:new Response(stored).body};},
+    async putBlob(path,value,options){if(stored!==null&&(!options.allowOverwrite||options.ifMatch!==`"${version}"`)){const error=new Error('Precondition');error.name='BlobPreconditionFailedError';throw error;}stored=value;return {etag:String(++version)};}
   });
   return async (url,options)=>{
     if(url.endsWith('/admin'))return Response.json({ok:true});
@@ -22,7 +22,7 @@ function server() {
     return Response.json(response.value,{status:response.code});
   };
 }
-test('two successive client edits tolerate quoted GET and unquoted PUT ETags',async()=>{
+test('successive edits use strong origin ETags even when GET returns weak CDN ETags',async()=>{
   const cloud=createCloudClient({fetchRequest:server()});await cloud.login(key);await cloud.load();
   await cloud.save(record);await cloud.save({...record,name:'二回目'});
   assert.equal((await cloud.load())[0].name,'二回目');

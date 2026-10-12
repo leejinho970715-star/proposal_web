@@ -1,9 +1,9 @@
-import { get, put } from '@vercel/blob';
+import { get, head, put } from '@vercel/blob';
 import { cors, isAdmin, validId, validateRecord, normalizeEtag, recordVersion, recordVersions } from '../lib/library.mjs';
 
 const path = 'library/catalog.json';
 const preconditionFailed = error => /Precondition|already exists/i.test(`${error.name} ${error.message}`);
-export function createHandler({ getBlob = get, putBlob = put } = {}) {
+export function createHandler({ getBlob = get, headBlob = head, putBlob = put } = {}) {
   async function readCatalog() {
     let result = await getBlob(path, { access: 'public', useCache: false });
     if (!result) {
@@ -12,7 +12,22 @@ export function createHandler({ getBlob = get, putBlob = put } = {}) {
       result = await getBlob(path, { access: 'public', useCache: false });
       if (!result) throw new Error('Catalog initialization failed');
     }
-    return { result, records: await new Response(result.stream).json() };
+    await result.stream.cancel();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      // Public GET responses can have weak CDN ETags. Writes need the origin
+      // ETag returned by the metadata API, not that HTTP response header.
+      const metadata = await headBlob(path);
+      const url = new URL(metadata.url);
+      url.searchParams.set('version', normalizeEtag(metadata.etag));
+      result = await getBlob(url.toString(), { access: 'public', useCache: false });
+      if (!result) continue;
+      const records = await new Response(result.stream).json();
+      // Do not apply a current write precondition to older cached contents.
+      if (normalizeEtag(result.blob.etag) === normalizeEtag(metadata.etag)) {
+        return { result, records, etag: metadata.etag };
+      }
+    }
+    throw new Error('Catalog content and origin version did not match');
   }
   return async function handler(req, res) {
     if (cors(req, res)) return;
@@ -20,7 +35,7 @@ export function createHandler({ getBlob = get, putBlob = put } = {}) {
     if (req.method === 'POST' && !isAdmin(req.headers.authorization)) return res.status(401).json({ error: '관리자 인증이 필요합니다.' });
     try {
       let catalog = await readCatalog();
-      if (req.method === 'GET') return res.status(200).json({ records: catalog.records, revision: normalizeEtag(catalog.result.blob.etag), versions: recordVersions(catalog.records) });
+      if (req.method === 'GET') return res.status(200).json({ records: catalog.records, revision: normalizeEtag(catalog.etag), versions: recordVersions(catalog.records) });
       let body; try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; } catch { return res.status(400).json({ error: 'Invalid request' }); }
       if (!body || typeof body !== 'object') return res.status(400).json({ error: 'Invalid request' });
       let record;
@@ -34,14 +49,14 @@ export function createHandler({ getBlob = get, putBlob = put } = {}) {
       const usesRecordVersion = Object.hasOwn(body, 'baseVersion');
       for (let attempt = 0; attempt < 4; attempt++) {
         const current = catalog.records.find(item => item.id === record.id);
-        const stale = usesRecordVersion ? body.baseVersion !== recordVersion(current) : normalizeEtag(body.revision) !== normalizeEtag(catalog.result.blob.etag);
+        const stale = usesRecordVersion ? body.baseVersion !== recordVersion(current) : normalizeEtag(body.revision) !== normalizeEtag(catalog.etag);
         if (stale) return res.status(409).json({ code: 'PROPOSAL_CONFLICT', error: '이 제안서가 다른 곳에서 수정되거나 삭제되었습니다. 입력한 내용은 유지됩니다. 확인 후 현재 내용으로 다시 저장할 수 있습니다.' });
         const records = [...catalog.records];
         const index = records.findIndex(item => item.id === record.id);
         if (index < 0) records.push(record); else records[index] = record;
         try {
           // Keep catalog-level atomic writes, but rebase unrelated proposal changes automatically.
-          const saved = await putBlob(path, JSON.stringify(records), { access: 'public', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true, ifMatch: catalog.result.blob.etag, cacheControlMaxAge: 60 });
+          const saved = await putBlob(path, JSON.stringify(records), { access: 'public', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true, ifMatch: catalog.etag, cacheControlMaxAge: 60 });
           return res.status(200).json({ record, revision: normalizeEtag(saved.etag), version: recordVersion(record) });
         } catch (error) {
           if (!preconditionFailed(error)) throw error;
