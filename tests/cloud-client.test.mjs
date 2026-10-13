@@ -44,3 +44,64 @@ test('conflicted save keeps files reusable and explicit retry avoids uploading t
   await a.save(draft,()=>{},a.getVersion(id));
   assert.equal(uploads,1);assert.equal((await a.load())[0].name,'my draft');
 });
+
+test('a stalled API response body times out instead of leaving the form waiting',async()=>{
+  const cloud=createCloudClient({requestTimeoutMs:20,fetchRequest:async()=>({ok:true,json:()=>new Promise(()=>{})})});
+  await assert.rejects(cloud.load(),error=>error.code==='OPERATION_TIMEOUT');
+});
+
+test('a stalled SDK upload times out, aborts and cannot publish a late result',async()=>{
+  let resolveUpload,uploadSignal,writes=0;
+  const fetchRequest=server();
+  const cloud=createCloudClient({uploadIdleTimeoutMs:20,fetchRequest:async(url,options)=>{if(url.endsWith('/library')&&options.method==='POST')writes++;return fetchRequest(url,options);},
+    uploadFile:async(_,__,options)=>{uploadSignal=options.abortSignal;return new Promise(resolve=>{resolveUpload=resolve;});}});
+  await cloud.login(key);await cloud.load();
+  const draft={...record,pages:[{name:'1.png',blob:new Blob(['image'])}]};
+  await assert.rejects(cloud.save(draft),error=>error.code==='OPERATION_TIMEOUT');
+  assert.equal(uploadSignal.aborted,true);
+  resolveUpload({url:`https://${host}/media/${crypto.randomUUID()}.png`});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(writes,0);
+});
+
+test('upload progress renews the idle deadline and exposes a percentage',async()=>{
+  const messages=[];
+  const cloud=createCloudClient({fetchRequest:server(),uploadIdleTimeoutMs:80,uploadFile:async(_,__,options)=>{
+    await new Promise(resolve=>setTimeout(resolve,45));options.onUploadProgress({loaded:5,total:10,percentage:50});
+    await new Promise(resolve=>setTimeout(resolve,45));return {url:`https://${host}/media/${crypto.randomUUID()}.png`};
+  }});
+  await cloud.login(key);await cloud.load();
+  await cloud.save({...record,pages:[{name:'1.png',blob:new Blob(['image'])}]},message=>messages.push(message));
+  assert.ok(messages.some(message=>message.includes('50%')));
+});
+
+test('cancel during upload preserves completed files for retry and stops catalog writes',async()=>{
+  let uploads=0,started;
+  const secondStarted=new Promise(resolve=>{started=resolve;});
+  const cloud=createCloudClient({fetchRequest:server(),uploadFile:async(_,__,options)=>{
+    uploads++;
+    if(uploads===2){started();return new Promise((_,reject)=>options.abortSignal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));}
+    return {url:`https://${host}/media/${crypto.randomUUID()}.png`};
+  }});
+  await cloud.login(key);await cloud.load();
+  const draft={...record,pages:[{name:'1.png',blob:new Blob(['a'])},{name:'2.png',blob:new Blob(['b'])}]};
+  const controller=new AbortController();
+  const saving=cloud.save(draft,()=>{},null,{signal:controller.signal});
+  const rejected=assert.rejects(saving,error=>error.code==='SAVE_CANCELLED');
+  await secondStarted;controller.abort();await rejected;
+  assert.equal((await cloud.load()).length,0);
+  await cloud.save(draft);
+  assert.equal(uploads,3);assert.equal((await cloud.load())[0].pages.length,2);
+});
+
+test('a lost save response is reconciled with the public catalog without a second write',async()=>{
+  const fetchRequest=server();let writes=0;
+  const cloud=createCloudClient({requestTimeoutMs:20,fetchRequest:async(url,options)=>{
+    const response=await fetchRequest(url,options);
+    if(url.endsWith('/library')&&options.method==='POST'){writes++;return new Promise(()=>{});}
+    return response;
+  }});
+  await cloud.login(key);await cloud.load();
+  assert.equal((await cloud.save(record)).name,record.name);
+  assert.equal(writes,1);assert.equal((await cloud.load()).length,1);
+});

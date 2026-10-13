@@ -1,2 +1,12 @@
 import { build } from 'esbuild';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 await build({ entryPoints: ['src/cloud-client.js'], bundle: true, format: 'esm', target: ['es2022'], outfile: 'proposal-site/dist/cloud-client.js', minify: true });
+const root='proposal-site/dist/';
+const hash=content=>createHash('sha256').update(content).digest('hex').slice(0,12);
+const cloudHash=hash(await readFile(root+'cloud-client.js'));
+const app=(await readFile(root+'app.js','utf8')).replace(/from '\.\/cloud-client\.js(?:\?v=[a-f0-9]+)?'/,`from './cloud-client.js?v=${cloudHash}'`);
+await writeFile(root+'app.js',app);
+const styleHash=hash(await readFile(root+'style.css'));
+const html=(await readFile(root+'index.html','utf8')).replace(/href="style\.css(?:\?v=[a-f0-9]+)?"/,`href="style.css?v=${styleHash}"`).replace(/src="app\.js(?:\?v=[a-f0-9]+)?"/,`src="app.js?v=${hash(app)}"`);
+await writeFile(root+'index.html',html);
