@@ -101,6 +101,25 @@ function draftRecord(name,subtitle,pdfFile){
     pdf:pdfFile?{name:pdfFile.name,blob:pdfFile}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null)};
 }
 function upsertProposal(proposal){const index=proposals.findIndex(p=>p.id===proposal.id);if(index<0)proposals.push(proposal);else proposals[index]=proposal;}
+async function replacePageImage(item,input){
+  const file=input.files[0];input.value='';
+  if(!file||saving||item.replacing||!pendingImages.includes(item))return;
+  item.replacing=true;renderImageOrder();$('form-error').textContent='';
+  try{
+    if(!supported.test(file.name))throw new Error('PNG, JPG, WEBP, GIF, AVIF 이미지를 선택하세요.');
+    if(file.size>25*1024*1024)throw new Error('25MB 이하 이미지를 선택하세요.');
+    await validateImages([file]);
+    const index=pendingImages.indexOf(item);
+    if(index<0||!dialog.open||saving)return;
+    const url=URL.createObjectURL(file);if(item.file)URL.revokeObjectURL(item.url);
+    item.file=file;item.url=url;
+  }catch(error){if(pendingImages.includes(item)&&dialog.open)$('form-error').textContent=error.message;}
+  finally{
+    item.replacing=false;
+    const index=pendingImages.indexOf(item);
+    if(index>=0&&dialog.open){renderImageOrder();$('image-order').children[index].querySelector('.replace-image')?.focus();}
+  }
+}
 function renderImageOrder(){
   $('image-order').replaceChildren();
   $('file-note').textContent=pendingImages.length?`${pendingImages.length}페이지 · 첫 이미지가 라이브러리 썸네일로 사용됩니다.`:'PNG, JPG, WEBP, GIF, AVIF 이미지 지원';
@@ -109,6 +128,11 @@ function renderImageOrder(){
     const preview=document.createElement('img');preview.src=item.url;preview.alt=`${index+1}페이지 미리보기`;
     const label=document.createElement('span');label.textContent=`${index+1}${index===0?' · 표지':''} — ${item.file?.name??item.record.name}`;
     const actions=document.createElement('div');actions.className='image-actions';
+    const replacement=document.createElement('input');replacement.type='file';replacement.accept=$('files').accept;replacement.hidden=true;
+    replacement.setAttribute('aria-label',`${index+1}페이지 교체 이미지`);replacement.onchange=()=>replacePageImage(item,replacement);
+    const replace=document.createElement('button');replace.type='button';replace.className='replace-image';replace.textContent=item.replacing?'확인 중…':'수정';
+    replace.setAttribute('aria-label',`${index+1}페이지 수정`);replace.disabled=saving||!!item.replacing;
+    replace.onclick=()=>{if(!saving&&!item.replacing)replacement.click();};actions.append(replace,replacement);
     for(const [text,offset] of [['앞으로',-1],['뒤로',1]]){
       const button=document.createElement('button');button.type='button';button.textContent=text;button.setAttribute('aria-label',`${index+1}페이지 ${text}`);
       button.disabled=index+offset<0||index+offset>=pendingImages.length;
@@ -136,6 +160,7 @@ async function validateImages(files){for(const file of files){const url=URL.crea
 $('add-form').onsubmit=async event=>{
   event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();const pdfFile=$('pdf-file').files[0];
   if(saving)return;
+  if(pendingImages.some(item=>item.replacing)){$('form-error').textContent='교체할 이미지를 확인 중입니다. 확인이 끝난 뒤 저장해주세요.';return;}
   if(!pendingImages.length||!name){$('form-error').textContent='제안서 이름과 한 장 이상의 이미지를 추가하세요.';return;}
   if(!admin||!cloudReady){$('form-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
