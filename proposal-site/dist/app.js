@@ -1,5 +1,11 @@
 import { cloud, withDeadline } from './cloud-client.js?v=5705e323b020';
 const $ = (id) => document.getElementById(id);
+// Bundled attachments remain available when the shared upload store is full.
+// Explicit values (including null) saved by an administrator take precedence.
+const bundledAttachments={
+  'pms-new':{figmaUrl:'https://www.figma.com/slides/RucV8xVMHXoAZXp59TVixq',pptx:{name:'PMS 구축 제안서 (건설).pptx',src:'assets/pptx/pms-construction.pptx'}},
+  '6af077fe-87ea-4aca-852c-270ba82f5e73':{figmaUrl:'https://www.figma.com/slides/IlLNywcS1EOM1TcoN0Qdax',pptx:{name:'PMS 구축 제안서 (베이직).pptx',src:'assets/pptx/pms-basic.pptx'}}
+};
 let admin=false, cloudReady=false, localRecords=[];
 const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
 proposals.push({id:'eumsquare',name:'이음스퀘어 회사소개서(NEW)',subtitle:'EUM SQUARE · COMPANY PROFILE',builtIn:true,pdfUrl:'assets/eumsquare-new-v2/company-profile.pdf',pdf:{name:'이음스퀘어 회사소개서(new).pdf',src:'assets/eumsquare-new-v2/company-profile.pdf'},pages:Array.from({length:19},(_,i)=>({src:`assets/eumsquare-new-v2/page-${i+1}.png`,name:`${i+1}페이지`}))});
@@ -11,6 +17,7 @@ function notify(message){$('notice').textContent=message;$('notice').hidden=fals
 function renderCards(){
   $('cards').replaceChildren();$('count').textContent=proposals.length;
   proposals.forEach(proposal=>{
+    proposal={...bundledAttachments[proposal.id],...proposal};
     const card=document.createElement('article');card.className='card';
     const button=document.createElement('button');button.className='card-open';button.setAttribute('aria-label',`${proposal.name}, ${proposal.pages.length}페이지 열기`);
     const cover=document.createElement('img');cover.className='cover';cover.src=proposal.pages[0].src;cover.alt=`${proposal.name} 표지`;cover.loading='lazy';
@@ -24,7 +31,7 @@ function renderCards(){
     open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
     if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
     if(proposal.figmaUrl){const figma=document.createElement('a');figma.className='pdf-action';figma.textContent='피그마 슬라이드';figma.href=proposal.figmaUrl;figma.target='_blank';figma.rel='noopener noreferrer';figma.setAttribute('aria-label',`${proposal.name} 피그마 슬라이드 (새 탭)`);actions.append(figma);}
-    if(proposal.pptx?.src){const pptx=document.createElement('a');pptx.className='pdf-action';pptx.textContent='PPTX 보기';pptx.href=`pptx.html?${new URLSearchParams({src:proposal.pptx.src,name:proposal.pptx.name})}`;pptx.target='_blank';pptx.rel='noopener noreferrer';pptx.setAttribute('aria-label',`${proposal.name} PPTX 보기 (새 탭)`);actions.append(pptx);}
+    if(proposal.pptx?.src){const pptx=document.createElement('a');pptx.className='pdf-action';pptx.textContent='PPTX 보기';pptx.href=`pptx.html?${new URLSearchParams({src:new URL(proposal.pptx.src,location.href).href,name:proposal.pptx.name})}`;pptx.target='_blank';pptx.rel='noopener noreferrer';pptx.setAttribute('aria-label',`${proposal.name} PPTX 보기 (새 탭)`);actions.append(pptx);}
     if(admin){    const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
     const remove=document.createElement('button');remove.type='button';remove.className='pdf-action delete-action';remove.textContent='삭제';remove.setAttribute('aria-label',`${proposal.name} 삭제`);remove.onclick=()=>openDelete(proposal,remove);actions.append(remove);
     }
@@ -165,7 +172,7 @@ dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
 dialog.addEventListener('close',()=>{pendingImages.filter(item=>item.file).forEach(item=>URL.revokeObjectURL(item.url));pendingImages=[];editing=null;$('add-form').reset();renderImageOrder();});
 function openDatabase(){return new Promise((resolve,reject)=>{const request=indexedDB.open('ione-proposal-library',1);request.onupgradeneeded=()=>request.result.createObjectStore('proposals',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
 function storeRecord(record){return new Promise((resolve,reject)=>{const tx=db.transaction('proposals','readwrite');tx.objectStore('proposals').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
-function hydrate(record){let pdfUrl=record.pdf?.src??null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{if(!p.blob)return {...p};const src=URL.createObjectURL(p.blob);urls.push(src);return {...p,src};})};}
+function hydrate(record){record={...bundledAttachments[record.id],...record};let pdfUrl=record.pdf?.src??null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{if(!p.blob)return {...p};const src=URL.createObjectURL(p.blob);urls.push(src);return {...p,src};})};}
 async function validatePdf(file,signal){if(!file)return;if(file.size>200*1024*1024)throw new Error('200MB 이하 PDF를 선택하세요.');const header=new TextDecoder().decode(await withDeadline(()=>file.slice(0,5).arrayBuffer(),{signal}));if(!/\.pdf$/i.test(file.name)||header!=='%PDF-')throw new Error('올바른 PDF 파일을 선택하세요.');}
 async function validatePptx(file,signal){if(!file)return;if(file.size>200*1024*1024)throw new Error('200MB 이하 PPTX를 선택하세요.');const header=new Uint8Array(await withDeadline(()=>file.slice(0,4).arrayBuffer(),{signal}));if(!/\.pptx$/i.test(file.name)||header[0]!==80||header[1]!==75||header[2]!==3||header[3]!==4)throw new Error('올바른 PPTX 파일을 선택하세요.');}
 function validateFigmaLink(){const value=$('figma-url').value.trim();if(!value)return;let url;try{url=new URL(value);}catch{throw new Error('올바른 Figma Slides 링크를 입력하세요.');}if(url.protocol!=='https:'||!['www.figma.com','figma.com'].includes(url.hostname)||url.username||url.password||url.port||!/^\/slides\/[a-zA-Z0-9]+(?:\/.*)?$/.test(url.pathname))throw new Error('Figma Slides의 https://www.figma.com/slides/ 링크를 입력하세요.');}

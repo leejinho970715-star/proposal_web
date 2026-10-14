@@ -78,6 +78,7 @@ test('Figma Slides and PPTX attachments validate independently of images and PDF
   const figmaUrl='https://www.figma.com/slides/RucV8xVMHXoAZXp59TVixq';
   const result=validateRecord({...proposal,pptx,figmaUrl},host);
   assert.deepEqual(result.pptx,pptx);assert.equal(result.figmaUrl,figmaUrl);
+  assert.equal(validateRecord({...proposal,pptx:{name:'건설.pptx',src:'assets/pptx/pms-construction.pptx'}},host).pptx.src,'assets/pptx/pms-construction.pptx');
   for(const url of ['javascript:alert(1)','https://evil.example/slides/abc','https://www.figma.com@evil.example/slides/abc','https://www.figma.com/file/abc'])assert.throws(()=>validateRecord({...proposal,figmaUrl:url},host));
   for(const src of ['assets/page-1.png',`https://${host}/media/a.pdf`,'https://evil.example/media/a.pptx'])assert.throws(()=>validateRecord({...proposal,pptx:{...pptx,src}},host));
   assert.throws(()=>validateRecord({...proposal,pages:[pptx]},host));
