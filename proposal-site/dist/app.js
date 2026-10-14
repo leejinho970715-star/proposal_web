@@ -1,4 +1,4 @@
-import { cloud, withDeadline } from './cloud-client.js?v=c77ead6a6e99';
+import { cloud, withDeadline } from './cloud-client.js?v=5705e323b020';
 const $ = (id) => document.getElementById(id);
 let admin=false, cloudReady=false, localRecords=[];
 const proposals = [{id:'pms',name:'PMS 구축 제안서',builtIn:true,pdfUrl:'assets/pms-proposal.pdf',pages:Array.from({length:25},(_,i)=>({src:`assets/page-${i+1}.png`,name:`${i+1}페이지`}))}];
@@ -23,6 +23,8 @@ function renderCards(){
     const open=document.createElement('button');open.type='button';open.className='slide-action';open.textContent='슬라이드 보가';open.setAttribute('aria-label',`${proposal.name} 슬라이드 보가`);
     open.onclick=()=>{returnFocus=open;openProposal(proposal.id);};actions.append(open);
     if(proposal.pdfUrl){const pdf=document.createElement('a');pdf.className='pdf-action';pdf.textContent='PDF 보기';pdf.href=proposal.pdfUrl;pdf.target='_blank';pdf.rel='noopener noreferrer';pdf.setAttribute('aria-label',`${proposal.name} PDF 보기 (새 탭)`);actions.append(pdf);}
+    if(proposal.figmaUrl){const figma=document.createElement('a');figma.className='pdf-action';figma.textContent='피그마 슬라이드';figma.href=proposal.figmaUrl;figma.target='_blank';figma.rel='noopener noreferrer';figma.setAttribute('aria-label',`${proposal.name} 피그마 슬라이드 (새 탭)`);actions.append(figma);}
+    if(proposal.pptx?.src){const pptx=document.createElement('a');pptx.className='pdf-action';pptx.textContent='PPTX 보기';pptx.href=`pptx.html?${new URLSearchParams({src:proposal.pptx.src,name:proposal.pptx.name})}`;pptx.target='_blank';pptx.rel='noopener noreferrer';pptx.setAttribute('aria-label',`${proposal.name} PPTX 보기 (새 탭)`);actions.append(pptx);}
     if(admin){    const edit=document.createElement('button');edit.type='button';edit.className='pdf-action';edit.textContent='수정하기';edit.setAttribute('aria-label',`${proposal.name} 수정하기`);edit.onclick=()=>openEditor(proposal);actions.append(edit);
     const remove=document.createElement('button');remove.type='button';remove.className='pdf-action delete-action';remove.textContent='삭제';remove.setAttribute('aria-label',`${proposal.name} 삭제`);remove.onclick=()=>openDelete(proposal,remove);actions.append(remove);
     }
@@ -95,6 +97,9 @@ function openEditor(proposal=null){
   $('proposal-name').value=proposal?.name??'';$('proposal-subtitle').value=proposal?getSubtitle(proposal):'';
   $('existing-pdf').textContent=proposal?.pdfUrl?`현재 PDF: ${proposal.pdf?.name??'PMS 제안서 PDF'} · 새 파일을 선택하지 않으면 유지됩니다.`:'';
   $('remove-pdf').parentElement.hidden=!proposal?.pdfUrl;
+  $('figma-url').value=proposal?.figmaUrl??'';
+  $('existing-pptx').textContent=proposal?.pptx?`현재 PPTX: ${proposal.pptx.name} · 새 파일을 선택하지 않으면 유지됩니다.`:'';
+  $('remove-pptx').parentElement.hidden=!proposal?.pptx;
   pendingImages=proposal?proposal.pages.map(p=>({file:null,record:{name:p.name,...(p.blob?{blob:p.blob}:{src:p.src})},url:p.src})):[];
   renderImageOrder();dialog.showModal();
 }
@@ -102,7 +107,9 @@ function selectedFiles(){return pendingImages.filter(item=>item.file).map(item=>
 function draftRecord(name,subtitle,pdfFile){
   return {id:editing?.id??crypto.randomUUID(),builtIn:editing?.builtIn??false,name,subtitle,
     pages:pendingImages.map(item=>item.file?{name:item.file.name,blob:item.file}:item.record),
-    pdf:pdfFile?{name:pdfFile.name,blob:pdfFile}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null)};
+    pdf:pdfFile?{name:pdfFile.name,blob:pdfFile}:$('remove-pdf').checked?null:editing?.pdf??(editing?.pdfUrl?{name:'PMS 제안서 PDF',src:editing.pdfUrl}:null),
+    figmaUrl:$('figma-url').value.trim()||null,
+    pptx:$('pptx-file').files[0]?{name:$('pptx-file').files[0].name,blob:$('pptx-file').files[0]}:$('remove-pptx').checked?null:editing?.pptx??null};
 }
 function upsertProposal(proposal){const index=proposals.findIndex(p=>p.id===proposal.id);if(index<0)proposals.push(proposal);else proposals[index]=proposal;}
 async function replacePageImage(item,input){
@@ -160,6 +167,8 @@ function openDatabase(){return new Promise((resolve,reject)=>{const request=inde
 function storeRecord(record){return new Promise((resolve,reject)=>{const tx=db.transaction('proposals','readwrite');tx.objectStore('proposals').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 function hydrate(record){let pdfUrl=record.pdf?.src??null;if(record.pdf?.blob){pdfUrl=URL.createObjectURL(record.pdf.blob);urls.push(pdfUrl);}return {...record,pdfUrl,pages:record.pages.map(p=>{if(!p.blob)return {...p};const src=URL.createObjectURL(p.blob);urls.push(src);return {...p,src};})};}
 async function validatePdf(file,signal){if(!file)return;if(file.size>200*1024*1024)throw new Error('200MB 이하 PDF를 선택하세요.');const header=new TextDecoder().decode(await withDeadline(()=>file.slice(0,5).arrayBuffer(),{signal}));if(!/\.pdf$/i.test(file.name)||header!=='%PDF-')throw new Error('올바른 PDF 파일을 선택하세요.');}
+async function validatePptx(file,signal){if(!file)return;if(file.size>200*1024*1024)throw new Error('200MB 이하 PPTX를 선택하세요.');const header=new Uint8Array(await withDeadline(()=>file.slice(0,4).arrayBuffer(),{signal}));if(!/\.pptx$/i.test(file.name)||header[0]!==80||header[1]!==75||header[2]!==3||header[3]!==4)throw new Error('올바른 PPTX 파일을 선택하세요.');}
+function validateFigmaLink(){const value=$('figma-url').value.trim();if(!value)return;let url;try{url=new URL(value);}catch{throw new Error('올바른 Figma Slides 링크를 입력하세요.');}if(url.protocol!=='https:'||!['www.figma.com','figma.com'].includes(url.hostname)||url.username||url.password||url.port||!/^\/slides\/[a-zA-Z0-9]+(?:\/.*)?$/.test(url.pathname))throw new Error('Figma Slides의 https://www.figma.com/slides/ 링크를 입력하세요.');}
 async function validateImages(files,signal){for(const file of files){if(file.size>25*1024*1024)throw new Error(`${file.name}: 25MB 이하 이미지를 선택하세요.`);const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await withDeadline(()=>img.decode(),{signal,timeoutMessage:`${file.name}: 이미지 확인 시간이 초과되었습니다. 파일을 다시 선택해주세요.`});}catch(error){if(error.code)throw error;throw new Error(`이미지를 읽을 수 없습니다: ${file.name}`);}finally{URL.revokeObjectURL(url);}}}
 $('add-form').onsubmit=async event=>{
   event.preventDefault();$('form-error').textContent='';const files=selectedFiles();const name=$('proposal-name').value.trim();const pdfFile=$('pdf-file').files[0];
@@ -169,7 +178,7 @@ $('add-form').onsubmit=async event=>{
   if(!admin||!cloudReady){$('form-error').textContent='관리자 로그인과 공용 저장소 연결이 필요합니다.';return;}
   saving=true;const controls=Array.from($('add-form').querySelectorAll('button,input'));const disabledStates=controls.map(control=>control.disabled);controls.forEach(control=>control.disabled=true);$('save').textContent='이미지 확인 및 저장 중…';
   saveController=new AbortController();saveStatus.hidden=false;saveStatus.textContent='첨부 파일 확인 중…';stopSave.hidden=false;stopSave.disabled=false;
-  try{await validatePdf(pdfFile,saveController.signal);await validateImages(files,saveController.signal);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);const saved=await cloud.save(record,message=>{saveStatus.textContent=message;$('save').textContent='저장 중…';stopSave.disabled=message==='제안서 목록 저장 중…'||message==='저장 결과 확인 중…';},editingVersion,{signal:saveController.signal});upsertProposal(hydrate(saved));renderCards();dialog.close();notify('제안서가 공유되었습니다. 다른 PC에서도 볼 수 있습니다.');}
+  try{validateFigmaLink();await validatePdf(pdfFile,saveController.signal);await validatePptx($('pptx-file').files[0],saveController.signal);await validateImages(files,saveController.signal);const record=draftRecord(name,$('proposal-subtitle').value.trim(),pdfFile);const saved=await cloud.save(record,message=>{saveStatus.textContent=message;$('save').textContent='저장 중…';stopSave.disabled=message==='제안서 목록 저장 중…'||message==='저장 결과 확인 중…';},editingVersion,{signal:saveController.signal});upsertProposal(hydrate(saved));renderCards();dialog.close();notify('제안서가 공유되었습니다. 다른 PC에서도 볼 수 있습니다.');}
   catch(error){$('form-error').textContent=error.name==='QuotaExceededError'?'브라우저 저장 공간이 부족합니다. 이미지 용량을 줄여 다시 시도하세요.':error.message||'저장에 실패했습니다. 다시 시도하세요.';$('resolve-conflict').hidden=error.code!=='PROPOSAL_CONFLICT';}
   finally{saving=false;saveController=null;saveStatus.hidden=true;stopSave.hidden=true;controls.forEach((control,i)=>control.disabled=disabledStates[i]);$('save').textContent=editing?'수정 내용 저장':'라이브러리에 추가';}
 };

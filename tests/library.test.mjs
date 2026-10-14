@@ -72,6 +72,27 @@ test('media URLs must belong to this store; built-in documents remain editable',
   for(const src of ['javascript:alert(1)','https://evil.example/media/a.png',`https://${host}@evil.example/media/a.png`,`https://${host}/media/a.png?bad=1`]) assert.throws(()=>validateRecord({...proposal,pages:[{name:'x',src}]},host));
   assert.equal(validateRecord({...proposal,id:'eumsquare',pages:[{name:'1',src:'assets/eumsquare/page-1.png'}],pdf:{name:'PDF',src:'assets/eumsquare/company-profile.pdf'}},host).builtIn,true);
 });
+
+test('Figma Slides and PPTX attachments validate independently of images and PDF',()=>{
+  const pptx={name:'제안서.pptx',src:`https://${host}/media/b0b807cd-4480-43a4-b54b-456b979ef631.pptx`};
+  const figmaUrl='https://www.figma.com/slides/RucV8xVMHXoAZXp59TVixq';
+  const result=validateRecord({...proposal,pptx,figmaUrl},host);
+  assert.deepEqual(result.pptx,pptx);assert.equal(result.figmaUrl,figmaUrl);
+  for(const url of ['javascript:alert(1)','https://evil.example/slides/abc','https://www.figma.com@evil.example/slides/abc','https://www.figma.com/file/abc'])assert.throws(()=>validateRecord({...proposal,figmaUrl:url},host));
+  for(const src of ['assets/page-1.png',`https://${host}/media/a.pdf`,'https://evil.example/media/a.pptx'])assert.throws(()=>validateRecord({...proposal,pptx:{...pptx,src}},host));
+  assert.throws(()=>validateRecord({...proposal,pages:[pptx]},host));
+  assert.throws(()=>validateRecord({...proposal,pdf:pptx},host));
+});
+
+test('older editors preserve new attachments, while explicit removal clears them',async()=>{
+  const handler=createHandler(memoryStore());await call(handler,'GET');
+  const attachments={pptx:{name:'제안서.pptx',src:`https://${host}/media/b0b807cd-4480-43a4-b54b-456b979ef631.pptx`},figmaUrl:'https://www.figma.com/slides/RucV8xVMHXoAZXp59TVixq'};
+  const created=await call(handler,'POST',{baseVersion:null,record:{...proposal,...attachments}},true);
+  const edited=await call(handler,'POST',{baseVersion:created.data.version,record:{...proposal,name:'기존 편집 화면'}},true);
+  assert.equal(edited.statusCode,200);assert.deepEqual(edited.data.record.pptx,attachments.pptx);assert.equal(edited.data.record.figmaUrl,attachments.figmaUrl);
+  const removed=await call(handler,'POST',{baseVersion:edited.data.version,record:{...proposal,pptx:null,figmaUrl:null}},true);
+  assert.equal(removed.data.record.pptx,null);assert.equal(removed.data.record.figmaUrl,null);
+});
 test('public reads, protected writes, shared create/edit/delete, and stale-write rejection',async()=>{
   const handler=createHandler(memoryStore());
   let result=await call(handler,'GET');assert.deepEqual(result.data.records,[]);assert.equal(result.headers['Access-Control-Allow-Origin'],'https://leejinho970715-star.github.io');

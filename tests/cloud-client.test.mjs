@@ -105,3 +105,15 @@ test('a lost save response is reconciled with the public catalog without a secon
   assert.equal((await cloud.save(record)).name,record.name);
   assert.equal(writes,1);assert.equal((await cloud.load()).length,1);
 });
+
+test('PPTX uploads use the document content type and survive later metadata edits',async()=>{
+  let uploads=0;
+  const cloud=createCloudClient({fetchRequest:server(),uploadFile:async(path,blob,options)=>{
+    uploads++;assert.ok(path.endsWith('.pptx'));assert.equal(options.contentType,'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    return {url:`https://${host}/${path}`};
+  }});
+  await cloud.login(key);await cloud.load();
+  const saved=await cloud.save({...record,pptx:{name:'제안서.pptx',blob:new Blob(['pptx'])},figmaUrl:'https://www.figma.com/slides/IlLNywcS1EOM1TcoN0Qdax'});
+  await cloud.save({...saved,name:'제목 수정'});
+  const latest=(await cloud.load())[0];assert.equal(uploads,1);assert.equal(latest.pptx.name,'제안서.pptx');assert.equal(latest.figmaUrl,saved.figmaUrl);
+});

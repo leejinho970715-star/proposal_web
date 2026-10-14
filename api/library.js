@@ -61,7 +61,12 @@ export function createHandler({ getBlob = get, headBlob = head, putBlob = put } 
         if (!validId(body.id)) return res.status(400).json({ error: '올바르지 않은 제안서입니다.' });
         record = { id: body.id, deleted: true };
       } else {
-        try { record = validateRecord(body.record, new URL(catalog.result.blob.url).hostname); }
+        try {
+          const existing=catalog.records.find(item=>item.id===body.record?.id);
+          // Older open browser tabs do not send these fields. Preserve them
+          // unless the editor explicitly supplies a replacement or null.
+          record = validateRecord({...body.record,pptx:body.record?.pptx===undefined?existing?.pptx:body.record.pptx,figmaUrl:body.record?.figmaUrl===undefined?existing?.figmaUrl:body.record.figmaUrl}, new URL(catalog.result.blob.url).hostname);
+        }
         catch (error) { return res.status(400).json({ error: error.message }); }
       }
       const usesRecordVersion = Object.hasOwn(body, 'baseVersion');

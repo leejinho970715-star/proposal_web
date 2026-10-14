@@ -13,14 +13,15 @@ export function createCloudClient({ fetchRequest = fetch, uploadFile = upload, b
     return data;
     }, { signal, timeoutMs: requestTimeoutMs });
   }
-  async function uploadMedia(item, progress, pdf = false, signal) {
+  async function uploadMedia(item, progress, kind = 'image', signal) {
     if(signal?.aborted)throw cancelledError();
     if (!item?.blob) return item;
     const cached = uploaded.get(item.blob); if (cached) return cached;
-    const extension = pdf ? 'pdf' : (item.name.split('.').pop() || '').toLowerCase();
-    const types = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', pdf: 'application/pdf' };
+    const extension = kind==='image' ? (item.name.split('.').pop() || '').toLowerCase() : kind;
+    const types = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', pdf: 'application/pdf', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
     if (!types[extension]) throw new Error(`지원하지 않는 파일입니다: ${item.name}`);
-    if (item.blob.size > (pdf ? 200 : 25) * 1024 * 1024) throw new Error(`${item.name}: ${pdf ? 200 : 25}MB 이하 파일을 선택하세요.`);
+    const limit=kind==='image'?25:200;
+    if (item.blob.size > limit * 1024 * 1024) throw new Error(`${item.name}: ${limit}MB 이하 파일을 선택하세요.`);
     progress(`${item.name} 업로드 준비 중…`);
     const result = await withDeadline((abortSignal, restart) => {
       let lastLoaded=0;
@@ -43,11 +44,12 @@ export function createCloudClient({ fetchRequest = fetch, uploadFile = upload, b
     async load() { const data = await request('library'); revision = data.revision; versions = data.versions ?? {}; return data.records; },
     async remove(id, baseVersion = versions[id] ?? null) { const data = await request('library', { revision, baseVersion, action: 'delete', id }, true); remember(id, data); },
     async save(record, progress = () => {}, baseVersion = versions[record.id] ?? null, {signal} = {}) {
-      const pages = []; for (const item of record.pages) pages.push(await uploadMedia(item, progress, false, signal));
-      const pdf = record.pdf ? await uploadMedia(record.pdf, progress, true, signal) : null;
+      const pages = []; for (const item of record.pages) pages.push(await uploadMedia(item, progress, 'image', signal));
+      const pdf = record.pdf ? await uploadMedia(record.pdf, progress, 'pdf', signal) : null;
+      const pptx = record.pptx ? await uploadMedia(record.pptx, progress, 'pptx', signal) : null;
       if(signal?.aborted)throw cancelledError();
       progress('제안서 목록 저장 중…');
-      const savedRecord={ ...record, pages, pdf };
+      const savedRecord={ ...record, pages, pdf, pptx, figmaUrl:record.figmaUrl||null };
       let data;
       try { data = await request('library', { revision, baseVersion, record: savedRecord }, true, signal); }
       catch(error){
@@ -57,7 +59,7 @@ export function createCloudClient({ fetchRequest = fetch, uploadFile = upload, b
         progress('저장 결과 확인 중…');
         const latest=await request('library');
         const found=latest.records.find(item=>item.id===record.id);
-        const same=found&&['id','name','subtitle','pages','pdf'].every(field=>JSON.stringify(found[field])===JSON.stringify(savedRecord[field]));
+        const same=found&&['id','name','subtitle','pages','pdf','pptx','figmaUrl'].every(field=>JSON.stringify(found[field])===JSON.stringify(savedRecord[field]));
         if(!same)throw error;
         data={record:found,revision:latest.revision,version:latest.versions?.[record.id]};
       }
