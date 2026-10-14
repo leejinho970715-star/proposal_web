@@ -2,5 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "npm run build",
-  "outputDirectory": "proposal-site/dist"
+  "outputDirectory": "proposal-site/dist",
+  "headers": [
+    { "source": "/assets/pptx/pms-construction.pptx", "headers": [{ "key": "Content-Disposition", "value": "attachment; filename=\"pms-construction.pptx\"; filename*=UTF-8''PMS%20%EA%B5%AC%EC%B6%95%20%EC%A0%9C%EC%95%88%EC%84%9C%20%28%EA%B1%B4%EC%84%A4%29.pptx" }] },
+    { "source": "/assets/pptx/pms-basic.pptx", "headers": [{ "key": "Content-Disposition", "value": "attachment; filename=\"pms-basic.pptx\"; filename*=UTF-8''PMS%20%EA%B5%AC%EC%B6%95%20%EC%A0%9C%EC%95%88%EC%84%9C%20%28%EB%B2%A0%EC%9D%B4%EC%A7%81%29.pptx" }] }
+  ]
 }

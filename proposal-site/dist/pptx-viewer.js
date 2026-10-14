@@ -13,5 +13,4 @@ if(source){
   const name=params.get('name')||'제안서.pptx';
   document.getElementById('document-title').textContent=name;
   const download=document.getElementById('document-download');download.href=source.href;download.download=name;download.hidden=false;
-  const frame=document.createElement('iframe');frame.src=`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(source.href)}`;frame.title='PowerPoint 미리보기';frame.allowFullscreen=true;frame.referrerPolicy='no-referrer';document.getElementById('document-preview').append(frame);
 }
