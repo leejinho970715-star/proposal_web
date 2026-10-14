@@ -49,6 +49,12 @@ test('an older cached catalog paired with a new origin ETag is never written',as
   assert.equal(result.statusCode,503);assert.equal(writes,0);
 });
 
+test('a configured public backup remains readable during storage outages without allowing writes',async()=>{
+  const handler=createHandler({fallbackRecords:[proposal],headBlob:async()=>{throw new Error('storage unavailable');}});
+  const read=await call(handler,'GET');assert.equal(read.statusCode,200);assert.deepEqual(read.data.records,[proposal]);assert.equal(read.data.readOnly,true);
+  assert.equal((await call(handler,'POST',{record:proposal,baseVersion:null},true)).statusCode,503);
+});
+
 test('create, edit and delete remain immediately visible while the public catalog cache stays stale',async()=>{
   const store=memoryStore({cacheCatalog:true});const handler=createHandler(store);await call(handler,'GET');
   const first=await call(handler,'POST',{baseVersion:null,record:proposal},true);assert.equal(first.statusCode,200);

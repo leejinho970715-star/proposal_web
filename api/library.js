@@ -1,10 +1,11 @@
 import { get, head, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
 import { cors, isAdmin, validId, validateRecord, normalizeEtag, recordVersion, recordVersions } from '../lib/library.mjs';
+import { catalogFallback } from '../lib/catalog-fallback.mjs';
 
 const path = 'library/catalog.json';
 const preconditionFailed = error => /Precondition|already exists/i.test(`${error.name} ${error.message}`);
-export function createHandler({ getBlob = get, headBlob = head, putBlob = put } = {}) {
+export function createHandler({ getBlob = get, headBlob = head, putBlob = put, fallbackRecords = null } = {}) {
   async function writeVersion(content) {
     const etag = createHash('md5').update(content).digest('hex');
     try {
@@ -91,8 +92,9 @@ export function createHandler({ getBlob = get, headBlob = head, putBlob = put } 
       return res.status(409).json({ code: 'LIBRARY_BUSY', error: '여러 저장 요청이 동시에 처리되고 있습니다. 입력한 내용은 유지되니 잠시 후 저장 버튼을 다시 눌러주세요.' });
     } catch (error) {
       console.error('Library operation failed:', error.name);
+      if(req.method==='GET'&&Array.isArray(fallbackRecords))return res.status(200).json({records:fallbackRecords,versions:recordVersions(fallbackRecords),revision:null,readOnly:true,message:'공용 저장소 연결을 복구할 때까지 마지막 저장 목록으로 열람할 수 있습니다. 새 업로드·수정은 잠시 중단됩니다.'});
       return res.status(503).json({ error: '공용 저장소에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' });
     }
   };
 }
-export default createHandler();
+export default createHandler({fallbackRecords:catalogFallback});

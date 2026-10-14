@@ -1,4 +1,4 @@
-import { cloud, withDeadline } from './cloud-client.js?v=5705e323b020';
+import { cloud, withDeadline } from './cloud-client.js?v=4c9341eb2e4b';
 const $ = (id) => document.getElementById(id);
 // Bundled attachments remain available when the shared upload store is full.
 // Explicit values (including null) saved by an administrator take precedence.
@@ -98,7 +98,7 @@ const stopSave=document.createElement('button');stopSave.type='button';stopSave.
 stopSave.onclick=()=>saveController?.abort();$('form-error').before(saveStatus,stopSave);
 function openEditor(proposal=null){
   if(!admin){$('auth-dialog').showModal();return;}
-  if(!cloudReady){notify('공용 저장소 연결을 확인한 뒤 다시 시도하세요.');return;}
+  if(!cloudReady){notify(cloud.isReadOnly()?'공용 저장소 연결을 복구할 때까지 열람만 가능합니다. 입력 저장은 잠시 중단됩니다.':'공용 저장소 연결을 확인한 뒤 다시 시도하세요.');return;}
   editing=proposal;editingVersion=proposal?cloud.getVersion(proposal.id):null;$('add-form').reset();$('form-error').textContent='';$('resolve-conflict').hidden=true;
   $('proposal-dialog-title').textContent=proposal?'제안서 수정':'제안서 추가';$('save').textContent=proposal?'수정 내용 저장':'라이브러리에 추가';
   $('proposal-name').value=proposal?.name??'';$('proposal-subtitle').value=proposal?getSubtitle(proposal):'';
@@ -218,7 +218,7 @@ $('auth-form').onsubmit=async event=>{
 };
 async function loadShared(){
   $('storage-status').textContent='공유 제안서를 불러오는 중…';
-  try{const records=await cloud.load();proposals.splice(0,proposals.length,...structuredClone(defaults));for(const record of records){if(record.deleted){const index=proposals.findIndex(p=>p.id===record.id);if(index>=0)proposals.splice(index,1);}else upsertProposal(hydrate(record));}cloudReady=true;renderCards();$('storage-status').textContent='공용 라이브러리 · 추가·수정·삭제한 내용은 모든 기기에서 반영됩니다.';}
+  try{const records=await cloud.load();proposals.splice(0,proposals.length,...structuredClone(defaults));for(const record of records){if(record.deleted){const index=proposals.findIndex(p=>p.id===record.id);if(index>=0)proposals.splice(index,1);}else upsertProposal(hydrate(record));}cloudReady=!cloud.isReadOnly();renderCards();$('storage-status').textContent=cloud.isReadOnly()?'공용 저장소 연결 오류 · 마지막 저장 목록으로 열람 중입니다. 새 업로드·수정·삭제는 연결 복구 후 가능합니다.':'공용 라이브러리 · 추가·수정·삭제한 내용은 모든 기기에서 반영됩니다.';}
   catch(error){cloudReady=false;$('storage-status').textContent=`${error.message} 기존 기본 제안서는 계속 볼 수 있습니다.`;}
 }
 $('refresh-library').onclick=loadShared;

@@ -3,7 +3,7 @@ import { withDeadline, cancelledError } from './operation.js';
 export { withDeadline } from './operation.js';
 
 export function createCloudClient({ fetchRequest = fetch, uploadFile = upload, base = '', requestTimeoutMs = 30000, uploadIdleTimeoutMs = 120000 } = {}) {
-  let key = '', revision = null, versions = {};
+  let key = '', revision = null, versions = {}, readOnly = false;
   const uploaded = new WeakMap();
   async function request(path, body, authenticated = false, signal) {
     return withDeadline(async abortSignal => {
@@ -41,7 +41,8 @@ export function createCloudClient({ fetchRequest = fetch, uploadFile = upload, b
     logout() { key = ''; },
     getVersion(id) { return versions[id] ?? null; },
     async refreshVersion(id) { const data = await request('library'); revision = data.revision; versions[id] = data.versions?.[id] ?? null; return versions[id]; },
-    async load() { const data = await request('library'); revision = data.revision; versions = data.versions ?? {}; return data.records; },
+    async load() { const data = await request('library'); revision = data.revision; versions = data.versions ?? {}; readOnly=!!data.readOnly; return data.records; },
+    isReadOnly() { return readOnly; },
     async remove(id, baseVersion = versions[id] ?? null) { const data = await request('library', { revision, baseVersion, action: 'delete', id }, true); remember(id, data); },
     async save(record, progress = () => {}, baseVersion = versions[record.id] ?? null, {signal} = {}) {
       const pages = []; for (const item of record.pages) pages.push(await uploadMedia(item, progress, 'image', signal));
